@@ -3,24 +3,26 @@
 // (leftmost) tab whenever the frontend saves a new local guide item.
 //
 // Setup: paste this file's contents into the bound Apps Script project's
-// Code.gs, change SECRET_TOKEN below, save, then Deploy > New deployment >
-// Web app (Execute as: Me, Who has access: Anyone). Copy the resulting
-// .../exec URL and give it plus SECRET_TOKEN to the frontend's
-// SHEET_WEBAPP_URL / SHEET_WEBAPP_TOKEN constants in index.html.
+// Code.gs, save, then set the SECRET_TOKEN script property (Project
+// Settings > Script Properties > Add script property, key "SECRET_TOKEN")
+// so the real secret never appears in this source file. Then Deploy >
+// New deployment > Web app (Execute as: Me, Who has access: Anyone).
+// Copy the resulting .../exec URL and give it plus the SECRET_TOKEN value
+// to the frontend's SHEET_WEBAPP_URL / SHEET_WEBAPP_TOKEN constants in
+// index.html.
 //
 // To push future edits: after Claude updates this file, copy its contents
 // into the Apps Script editor, save, then Deploy > Manage deployments >
 // edit (pencil) icon > New version > Deploy. The web app URL stays the same.
 
-var SECRET_TOKEN = "원하는_비밀문자열로_변경하세요";
-
 function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.tryLock(10000);
   try {
+    var secretToken = PropertiesService.getScriptProperties().getProperty("SECRET_TOKEN");
     var data = JSON.parse(e.postData.contents);
 
-    if (data.token !== SECRET_TOKEN) {
+    if (!secretToken || data.token !== secretToken) {
       return jsonOutput({ ok: false, error: "unauthorized" });
     }
     if (!data.content) {
