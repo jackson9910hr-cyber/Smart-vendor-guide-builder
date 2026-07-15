@@ -555,14 +555,16 @@
 (function () {
   "use strict";
 
-  var CSV_URL = "https://docs.google.com/spreadsheets/d/1oDI2JMA4QYO5swWjUAhymaD-gCNw1G751YF4cvkwtEc/export?format=csv&gid=0";
   var LOCAL_ITEMS_KEY = "svg_local_items_v1";
   var ITEM_ORDER_KEY = "svg_item_order_v1";
 
-  // Google Apps Script Web App URL that appends a row to the master sheet.
-  // Leave both blank to keep "새 업무가이드 내용 추가" local-only (no sheet write).
+  // Google Apps Script Web App URL (see apps-script/Code.gs). Used for both
+  // reading the master checklist (GET) and appending new items (POST) so
+  // the underlying spreadsheet can stay fully private - Apps Script always
+  // runs with the owner's own access regardless of who calls this URL.
+  // Leave both blank to run local-storage-only (no master list, no sheet write).
   var SHEET_WEBAPP_URL = ""; // e.g. "https://script.google.com/macros/s/XXXXXXXX/exec"
-  var SHEET_WEBAPP_TOKEN = ""; // must match SECRET_TOKEN in the Apps Script
+  var SHEET_WEBAPP_TOKEN = ""; // must match the SECRET_TOKEN script property
 
   var masterItems = [];
   var localItems = [];
@@ -615,62 +617,6 @@
     return "l-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
   }
 
-  // ---------- CSV parsing ----------
-
-  function parseCSV(text) {
-    var rows = [];
-    var row = [];
-    var field = "";
-    var inQuotes = false;
-
-    for (var i = 0; i < text.length; i++) {
-      var c = text[i];
-      if (inQuotes) {
-        if (c === '"') {
-          if (text[i + 1] === '"') { field += '"'; i++; }
-          else { inQuotes = false; }
-        } else {
-          field += c;
-        }
-      } else {
-        if (c === '"') {
-          inQuotes = true;
-        } else if (c === ",") {
-          row.push(field); field = "";
-        } else if (c === "\n") {
-          row.push(field); rows.push(row); row = []; field = "";
-        } else if (c === "\r") {
-          // skip
-        } else {
-          field += c;
-        }
-      }
-    }
-    if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
-    return rows;
-  }
-
-  function parseMasterCSV(text) {
-    var rows = parseCSV(text);
-    var items = [];
-    for (var i = 1; i < rows.length; i++) { // skip header row
-      var cols = rows[i];
-      if (!cols || cols.length === 0) continue;
-      var category = (cols[0] || "").trim();
-      var content = (cols[1] || "").trim();
-      if (!category && !content) continue;
-      var days = parseDaysValue(cols[2]);
-      items.push({
-        id: "m-" + i,
-        category: category || "기타",
-        content: content,
-        days: days,
-        source: "master"
-      });
-    }
-    return items;
-  }
-
   // ---------- localStorage ----------
 
   function loadLocalItems() {
@@ -711,18 +657,35 @@
 
   // ---------- Master fetch ----------
 
+  // Reads the master checklist through the Apps Script Web App (doGet) so
+  // the spreadsheet itself can stay fully private. Silently falls back to
+  // an empty master list if unconfigured or the request fails.
   function fetchMasterItemsAsync() {
-    return fetch(CSV_URL)
+    if (!SHEET_WEBAPP_URL) {
+      masterItems = [];
+      return Promise.resolve();
+    }
+
+    return fetch(SHEET_WEBAPP_URL)
       .then(function (res) {
         if (!res.ok) throw new Error("network response not ok");
-        return res.text();
+        return res.json();
       })
-      .then(function (text) {
-        try {
-          masterItems = parseMasterCSV(text);
-        } catch (e) {
+      .then(function (data) {
+        if (!data || !data.ok || !Array.isArray(data.items)) {
           masterItems = [];
+          return;
         }
+        masterItems = data.items.map(function (it, idx) {
+          var rawDays = it.days === null || it.days === undefined ? "" : it.days;
+          return {
+            id: "m-" + idx,
+            category: it.category || "기타",
+            content: it.content || "",
+            days: parseDaysValue(String(rawDays)),
+            source: "master"
+          };
+        });
       })
       .catch(function () {
         masterItems = [];
