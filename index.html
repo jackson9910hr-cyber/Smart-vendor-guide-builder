@@ -469,6 +469,7 @@
       <button type="button" class="btn btn-ghost" id="btn-open-add" aria-label="새 업무가이드 내용 추가 팝업 열기">+ 새 업무가이드 내용 추가</button>
     </div>
     <p class="sync-hint" id="sync-hint">구글시트 연동 실패 시 로컬 저장 데이터만 표시됩니다.</p>
+    <p class="hint-text" id="sheet-sync-status" style="display:none;"></p>
   </section>
 
   <!-- 선택된 항목 리스트 -->
@@ -557,6 +558,11 @@
   var CSV_URL = "https://docs.google.com/spreadsheets/d/1oDI2JMA4QYO5swWjUAhymaD-gCNw1G751YF4cvkwtEc/export?format=csv&gid=0";
   var LOCAL_ITEMS_KEY = "svg_local_items_v1";
   var ITEM_ORDER_KEY = "svg_item_order_v1";
+
+  // Google Apps Script Web App URL that appends a row to the master sheet.
+  // Leave both blank to keep "새 업무가이드 내용 추가" local-only (no sheet write).
+  var SHEET_WEBAPP_URL = ""; // e.g. "https://script.google.com/macros/s/XXXXXXXX/exec"
+  var SHEET_WEBAPP_TOKEN = ""; // must match SECRET_TOKEN in the Apps Script
 
   var masterItems = [];
   var localItems = [];
@@ -1025,12 +1031,64 @@
       };
       localItems.push(newItem);
       saveLocalItems();
+      syncItemToSheet(newItem);
     }
 
     editingItemId = null;
     closeAddModal();
     renderSelectModalList();
     renderSelectedList();
+  }
+
+  // ---------- Google Sheet sync (optional, write-through via Apps Script) ----------
+
+  function setSyncStatus(text) {
+    var el = document.getElementById("sheet-sync-status");
+    if (!el) return;
+    el.textContent = text;
+    el.style.display = "block";
+    clearTimeout(setSyncStatus._timer);
+    setSyncStatus._timer = setTimeout(function () {
+      el.style.display = "none";
+    }, 4000);
+  }
+
+  // Best-effort write-through to the master Google Sheet via an Apps Script
+  // Web App (see project notes for setup). If unconfigured or the request
+  // fails, the item silently stays local-only — saveNewItem() already
+  // persisted it to localStorage before this runs.
+  function syncItemToSheet(item) {
+    if (!SHEET_WEBAPP_URL) return;
+
+    setSyncStatus("구글시트에 저장 중...");
+
+    fetch(SHEET_WEBAPP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        token: SHEET_WEBAPP_TOKEN,
+        category: item.category,
+        content: item.content,
+        days: item.days === null ? "" : item.days
+      })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data && data.ok) {
+          localItems = localItems.filter(function (x) { return x.id !== item.id; });
+          saveLocalItems();
+          item.source = "master";
+          masterItems.push(item);
+          setSyncStatus("구글시트에 저장되었습니다.");
+          renderSelectModalList();
+          renderSelectedList();
+        } else {
+          setSyncStatus("구글시트 저장 실패 (이 브라우저에만 저장됨)");
+        }
+      })
+      .catch(function () {
+        setSyncStatus("구글시트 연동 실패 (이 브라우저에만 저장됨)");
+      });
   }
 
   // ---------- Selected list (main screen) ----------
