@@ -1085,8 +1085,8 @@
 
       sheet.columns = [
         { width: 12 },
-        { width: 78 },
-        { width: 16 },
+        { width: 54 },
+        { width: 24 },
         { width: 24 }
       ];
 
@@ -1141,12 +1141,13 @@
       // Row 5: blank spacer
       // (row 5 intentionally left empty)
 
-      // Row 6: header
+      // Row 6: header (내용 spans B:C, 조치기한 in D)
+      sheet.mergeCells("B6:C6");
       var headerRow = sheet.getRow(6);
       headerRow.getCell(1).value = "No";
       headerRow.getCell(2).value = "업무가이드 내용 (Action Item)";
-      headerRow.getCell(3).value = "조치기한";
-      headerRow.eachCell(function (cell) {
+      headerRow.getCell(4).value = "조치기한";
+      headerRow.eachCell({ includeEmpty: true }, function (cell) {
         cell.fill = greenFill;
         cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
         cell.alignment = { vertical: "middle", horizontal: "center" };
@@ -1161,7 +1162,7 @@
       var currentRow = 7;
 
       if (selected.length === 0) {
-        sheet.mergeCells("A" + currentRow + ":C" + currentRow);
+        sheet.mergeCells("A" + currentRow + ":D" + currentRow);
         var emptyCell = sheet.getCell("A" + currentRow);
         emptyCell.value = "선택된 업무가이드 항목이 없습니다";
         emptyCell.alignment = { vertical: "middle", horizontal: "center" };
@@ -1171,14 +1172,15 @@
       } else {
         selected.forEach(function (it, idx) {
           var due = resolveDueDate(it.days);
+          sheet.mergeCells("B" + currentRow + ":C" + currentRow);
           var row = sheet.getRow(currentRow);
           row.getCell(1).value = idx + 1;
           row.getCell(2).value = it.content;
-          row.getCell(3).value = due;
+          row.getCell(4).value = due;
 
           row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
           row.getCell(2).alignment = { vertical: "top", horizontal: "left", wrapText: true };
-          row.getCell(3).alignment = { vertical: "middle", horizontal: "center" };
+          row.getCell(4).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
 
           row.eachCell({ includeEmpty: true }, function (cell) {
             cell.border = thinBorder;
@@ -1193,7 +1195,7 @@
 
       // signature row
       sheet.getCell("A" + currentRow).value = "Doosan : ______________________";
-      sheet.getCell("C" + currentRow).value = "Supplier : ______________________";
+      sheet.getCell("D" + currentRow).value = "Supplier : ______________________";
       currentRow++;
 
       // date row
