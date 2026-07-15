@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>협력업체 업무가이드 작성 도구</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --text: #1a2332;
+    --text-sub: #3d4a5c;
+    --border: #d8dee6;
+    --accent: #2f6f5e;
+    --accent-bg: #e7f2ee;
+    --danger: #b3452c;
+    --white: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+    line-height: 1.5;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 20px 16px 60px;
+  }
+
+  header.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  header.app-header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text);
+  }
+
+  header.app-header .version {
+    font-size: 13px;
+    color: var(--text-sub);
+    background: var(--accent-bg);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+
+  .card h2 {
+    font-size: 16px;
+    margin: 0 0 16px;
+    color: var(--text);
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-sub);
+  }
+
+  .field input, .field select, .field textarea {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 10px;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--white);
+    font-family: inherit;
+    width: 100%;
+  }
+
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--accent);
+  }
+
+  .title-preview {
+    margin-top: 16px;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .title-preview .label-small {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .title-preview .title-text {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .title-preview .title-text.placeholder {
+    font-weight: 400;
+    color: var(--text-sub);
+    font-size: 14px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: opacity 0.15s ease;
+  }
+
+  .btn:hover { opacity: 0.88; }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--white);
+    border-color: var(--accent);
+  }
+
+  .btn-ghost {
+    background: var(--white);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .btn-danger {
+    background: var(--white);
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  .btn-danger:hover { background: var(--danger); color: var(--white); }
+
+  .btn-small {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .hint-text {
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 10px;
+  }
+
+  table.item-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 14px;
+  }
+
+  table.item-table th, table.item-table td {
+    border: 1px solid var(--border);
+    padding: 10px 8px;
+    font-size: 13px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  table.item-table th {
+    background: var(--bg);
+    color: var(--text-sub);
+    font-weight: 700;
+  }
+
+  table.item-table td.col-no, table.item-table td.col-date,
+  table.item-table th.col-no, table.item-table th.col-date {
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  table.item-table td.col-del { text-align: center; white-space: nowrap; }
+
+  .empty-state {
+    text-align: center;
+    color: var(--text-sub);
+    font-size: 14px;
+    padding: 24px 0;
+  }
+
+  .excel-btn-wrap {
+    background: var(--text);
+    border-radius: 10px;
+    padding: 22px;
+    text-align: center;
+  }
+
+  .excel-btn-wrap .btn-primary {
+    width: 100%;
+    max-width: 420px;
+    padding: 14px 20px;
+    font-size: 16px;
+  }
+
+  .footer-notice {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 20px;
+    padding: 0 8px;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 35, 50, 0.55);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+  }
+
+  .modal-overlay.open {
+    display: flex;
+  }
+
+  .modal-box {
+    background: var(--white);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-sub);
+    padding: 4px 6px;
+  }
+
+  .modal-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .selected-counter {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .select-item-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .select-item-row:last-child { border-bottom: none; }
+
+  .select-item-row input[type="checkbox"] {
+    margin-top: 4px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  .select-item-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-bg);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin-bottom: 4px;
+  }
+
+  .tag.local-tag {
+    color: var(--text-sub);
+    background: var(--bg);
+  }
+
+  .select-item-text {
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 4px;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .select-item-date {
+    font-size: 12px;
+    color: var(--text-sub);
+  }
+
+  .modal-note {
+    font-size: 12px;
+    color: var(--text-sub);
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+
+  .sync-hint {
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 10px;
+  }
+
+  @media (max-width: 640px) {
+    .field-grid { grid-template-columns: 1fr; }
+    header.app-header h1 { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <header class="app-header">
+    <h1>협력업체 업무가이드 작성 도구</h1>
+    <span class="version">v1.0</span>
+  </header>
+
+  <!-- 발주 정보 입력 카드 -->
+  <section class="card" aria-labelledby="po-info-heading">
+    <h2 id="po-info-heading">발주 정보 입력</h2>
+    <div class="field-grid">
+      <div class="field">
+        <label for="f-project">프로젝트명</label>
+        <input type="text" id="f-project" placeholder="예: ABC프로젝트">
+      </div>
+      <div class="field">
+        <label for="f-hogi">호기</label>
+        <input type="text" id="f-hogi" placeholder="예: 1호기">
+      </div>
+      <div class="field">
+        <label for="f-item">품목명</label>
+        <input type="text" id="f-item" placeholder="예: 밸브 어셈블리">
+      </div>
+      <div class="field">
+        <label for="f-po">PO 번호</label>
+        <input type="text" id="f-po" placeholder="예: PO-2026-0001">
+      </div>
+      <div class="field">
+        <label for="f-podate">PO 납기</label>
+        <input type="date" id="f-podate">
+      </div>
+      <div class="field">
+        <label for="f-vendor">업체명</label>
+        <input type="text" id="f-vendor" placeholder="예: (주)협력업체">
+      </div>
+    </div>
+
+    <div class="title-preview">
+      <span class="label-small">문서 제목 미리보기</span>
+      <div class="title-text" id="title-preview-text">입력하면 제목이 자동 생성됩니다</div>
+    </div>
+  </section>
+
+  <!-- 업무가이드 항목 관리 카드 -->
+  <section class="card" aria-labelledby="item-manage-heading">
+    <h2 id="item-manage-heading">업무가이드 항목 관리</h2>
+    <div class="btn-row">
+      <button type="button" class="btn btn-primary" id="btn-open-select" aria-label="업무가이드 항목 선택 팝업 열기">업무가이드 항목 선택</button>
+      <button type="button" class="btn btn-ghost" id="btn-open-add" aria-label="새 업무가이드 내용 추가 팝업 열기">+ 새 업무가이드 내용 추가</button>
+    </div>
+    <p class="sync-hint" id="sync-hint">구글시트 연동 실패 시 로컬 저장 데이터만 표시됩니다.</p>
+  </section>
+
+  <!-- 선택된 항목 리스트 -->
+  <section class="card" aria-labelledby="selected-list-heading">
+    <h2 id="selected-list-heading">선택된 업무가이드 항목</h2>
+    <div id="selected-list-wrap">
+      <p class="empty-state">선택된 업무가이드 항목이 없습니다</p>
+    </div>
+  </section>
+
+  <!-- 엑셀 다운로드 -->
+  <div class="excel-btn-wrap">
+    <button type="button" class="btn btn-primary" id="btn-download-excel" aria-label="업무가이드 엑셀 파일 다운로드">엑셀 다운로드</button>
+  </div>
+
+  <p class="footer-notice">모든 데이터는 브라우저 내에서만 처리되며, 외부 서버로 전송되지 않습니다.</p>
+
+</div>
+
+<!-- 업무가이드 항목 선택 팝업 -->
+<div class="modal-overlay" id="modal-select" role="dialog" aria-modal="true" aria-labelledby="modal-select-title">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-select-title">업무가이드 항목 선택</h3>
+      <button type="button" class="modal-close" id="modal-select-close" aria-label="팝업 닫기">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-note">삭제는 로컬에 추가한 항목에만 적용되며, 구글시트 원본 데이터는 변경되지 않습니다.</p>
+      <div id="select-item-list"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="selected-counter" id="selected-counter">0개 선택됨</span>
+      <button type="button" class="btn btn-primary" id="btn-apply-select">선택 적용</button>
+    </div>
+  </div>
+</div>
+
+<!-- 신규 항목 추가 팝업 -->
+<div class="modal-overlay" id="modal-add" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-add-title">새 업무가이드 내용 추가</h3>
+      <button type="button" class="modal-close" id="modal-add-close" aria-label="팝업 닫기">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field" style="margin-bottom:14px;">
+        <label for="new-category">구분</label>
+        <select id="new-category">
+          <option value="일반">일반</option>
+          <option value="PO">PO</option>
+          <option value="MPS">MPS</option>
+          <option value="운송">운송</option>
+          <option value="납기">납기</option>
+          <option value="품질">품질</option>
+          <option value="시스템">시스템</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label for="new-content">업무가이드 내용</label>
+        <textarea id="new-content" rows="4" placeholder="업무가이드 내용을 입력하세요"></textarea>
+      </div>
+      <div class="field">
+        <label for="new-days">표준 조치요구일 (일 단위)</label>
+        <input type="number" id="new-days" min="0" placeholder="예: 15">
+      </div>
+      <p class="hint-text">이 항목을 선택하면 오늘 날짜 + 입력한 일수로 조치기한이 자동 계산됩니다. 비워두면 기한 없음(-)으로 표시됩니다.</p>
+      <p class="hint-text">저장한 항목은 이 브라우저에 로컬로 저장되며, 구글시트에는 반영되지 않습니다.</p>
+    </div>
+    <div class="modal-footer">
+      <span></span>
+      <button type="button" class="btn btn-primary" id="btn-save-new">저장</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var CSV_URL = "https://docs.google.com/spreadsheets/d/1oDI2JMA4QYO5swWjUAhymaD-gCNw1G751YF4cvkwtEc/export?format=csv&gid=0";
+  var LOCAL_ITEMS_KEY = "svg_local_items_v1";
+
+  var masterItems = [];
+  var localItems = [];
+  var selectedIds = [];
+  var todayStr = formatDate(new Date());
+
+  // ---------- Utilities ----------
+
+  function escapeHtml(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+
+  function formatDate(d) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+
+  function computeDueDate(days) {
+    if (days === null || days === undefined || isNaN(days)) return null;
+    var base = new Date(todayStr + "T00:00:00");
+    base.setDate(base.getDate() + Number(days));
+    return formatDate(base);
+  }
+
+  function genId() {
+    return "l-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
+  }
+
+  // ---------- CSV parsing ----------
+
+  function parseCSV(text) {
+    var rows = [];
+    var row = [];
+    var field = "";
+    var inQuotes = false;
+
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else { inQuotes = false; }
+        } else {
+          field += c;
+        }
+      } else {
+        if (c === '"') {
+          inQuotes = true;
+        } else if (c === ",") {
+          row.push(field); field = "";
+        } else if (c === "\n") {
+          row.push(field); rows.push(row); row = []; field = "";
+        } else if (c === "\r") {
+          // skip
+        } else {
+          field += c;
+        }
+      }
+    }
+    if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function parseMasterCSV(text) {
+    var rows = parseCSV(text);
+    var items = [];
+    for (var i = 1; i < rows.length; i++) { // skip header row
+      var cols = rows[i];
+      if (!cols || cols.length === 0) continue;
+      var category = (cols[0] || "").trim();
+      var content = (cols[1] || "").trim();
+      if (!category && !content) continue;
+      var daysRaw = (cols[2] || "").trim();
+      var days = daysRaw === "" ? null : parseInt(daysRaw, 10);
+      if (isNaN(days)) days = null;
+      items.push({
+        id: "m-" + i,
+        category: category || "기타",
+        content: content,
+        days: days,
+        source: "master"
+      });
+    }
+    return items;
+  }
+
+  // ---------- localStorage ----------
+
+  function loadLocalItems() {
+    try {
+      var raw = localStorage.getItem(LOCAL_ITEMS_KEY);
+      localItems = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(localItems)) localItems = [];
+    } catch (e) {
+      localItems = [];
+    }
+  }
+
+  function saveLocalItems() {
+    try {
+      localStorage.setItem(LOCAL_ITEMS_KEY, JSON.stringify(localItems));
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
+  // ---------- Master fetch ----------
+
+  function fetchMasterItemsAsync() {
+    return fetch(CSV_URL)
+      .then(function (res) {
+        if (!res.ok) throw new Error("network response not ok");
+        return res.text();
+      })
+      .then(function (text) {
+        try {
+          masterItems = parseMasterCSV(text);
+        } catch (e) {
+          masterItems = [];
+        }
+      })
+      .catch(function () {
+        masterItems = [];
+      });
+  }
+
+  function combinedItems() {
+    return masterItems.concat(localItems);
+  }
+
+  // ---------- Title preview ----------
+
+  function buildDocTitle() {
+    var project = document.getElementById("f-project").value.trim();
+    var hogi = document.getElementById("f-hogi").value.trim();
+    var item = document.getElementById("f-item").value.trim();
+    var parts = [project, hogi, item].filter(function (v) { return v; });
+    if (parts.length === 0) return "업무가이드";
+    return parts.join(" ") + " 업무가이드";
+  }
+
+  function renderTitlePreview() {
+    var project = document.getElementById("f-project").value.trim();
+    var item = document.getElementById("f-item").value.trim();
+    var el = document.getElementById("title-preview-text");
+    if (!project && !item) {
+      el.textContent = "입력하면 제목이 자동 생성됩니다";
+      el.classList.add("placeholder");
+    } else {
+      el.textContent = buildDocTitle();
+      el.classList.remove("placeholder");
+    }
+  }
+
+  // ---------- Select modal ----------
+
+  var modalSelectedTemp = [];
+
+  function openSelectModal() {
+    modalSelectedTemp = selectedIds.slice();
+    renderSelectModalList();
+    document.getElementById("modal-select").classList.add("open");
+  }
+
+  function closeSelectModal() {
+    document.getElementById("modal-select").classList.remove("open");
+  }
+
+  function renderSelectModalList() {
+    var wrap = document.getElementById("select-item-list");
+    var items = combinedItems();
+
+    if (items.length === 0) {
+      wrap.innerHTML = '<p class="empty-state">표시할 업무가이드 항목이 없습니다</p>';
+      updateSelectedCounter();
+      return;
+    }
+
+    var html = items.map(function (it) {
+      var checked = modalSelectedTemp.indexOf(it.id) !== -1 ? "checked" : "";
+      var dueText = it.days !== null
+        ? "표준 조치요구일: " + it.days + "일 (선택 시 " + computeDueDate(it.days) + ")"
+        : "표준 조치요구일: 없음 (선택 시 기한 없음)";
+      var isLocal = it.source === "local";
+      var deleteBtn = isLocal
+        ? '<button type="button" class="btn btn-danger btn-small" data-delete-id="' + it.id + '" aria-label="항목 삭제">삭제</button>'
+        : "";
+      var tagClass = isLocal ? "tag local-tag" : "tag";
+      var tagLabel = isLocal ? escapeHtml(it.category) + " · 로컬" : escapeHtml(it.category);
+
+      return (
+        '<div class="select-item-row">' +
+          '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">' +
+          '<div class="select-item-content">' +
+            '<span class="' + tagClass + '">' + tagLabel + '</span>' +
+            '<div class="select-item-text">' + escapeHtml(it.content) + '</div>' +
+            '<div class="select-item-date">' + escapeHtml(dueText) + '</div>' +
+          '</div>' +
+          deleteBtn +
+        '</div>'
+      );
+    }).join("");
+
+    wrap.innerHTML = html;
+
+    var checkboxes = wrap.querySelectorAll("input[type=checkbox]");
+    checkboxes.forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var id = cb.getAttribute("data-item-id");
+        if (cb.checked) {
+          if (modalSelectedTemp.indexOf(id) === -1) modalSelectedTemp.push(id);
+        } else {
+          modalSelectedTemp = modalSelectedTemp.filter(function (x) { return x !== id; });
+        }
+        updateSelectedCounter();
+      });
+    });
+
+    var deleteButtons = wrap.querySelectorAll("[data-delete-id]");
+    deleteButtons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-delete-id");
+        localItems = localItems.filter(function (x) { return x.id !== id; });
+        saveLocalItems();
+        modalSelectedTemp = modalSelectedTemp.filter(function (x) { return x !== id; });
+        selectedIds = selectedIds.filter(function (x) { return x !== id; });
+        renderSelectModalList();
+        renderSelectedList();
+      });
+    });
+
+    updateSelectedCounter();
+  }
+
+  function updateSelectedCounter() {
+    document.getElementById("selected-counter").textContent = modalSelectedTemp.length + "개 선택됨";
+  }
+
+  function applySelection() {
+    selectedIds = modalSelectedTemp.slice();
+    closeSelectModal();
+    renderSelectedList();
+  }
+
+  // ---------- Add modal ----------
+
+  function openAddModal() {
+    document.getElementById("new-category").value = "일반";
+    document.getElementById("new-content").value = "";
+    document.getElementById("new-days").value = "";
+    document.getElementById("modal-add").classList.add("open");
+  }
+
+  function closeAddModal() {
+    document.getElementById("modal-add").classList.remove("open");
+  }
+
+  function saveNewItem() {
+    var category = document.getElementById("new-category").value;
+    var content = document.getElementById("new-content").value.trim();
+    var daysRaw = document.getElementById("new-days").value.trim();
+
+    if (!content) {
+      alert("업무가이드 내용을 입력해 주세요.");
+      return;
+    }
+
+    var days = daysRaw === "" ? null : parseInt(daysRaw, 10);
+    if (daysRaw !== "" && isNaN(days)) days = null;
+
+    var newItem = {
+      id: genId(),
+      category: category,
+      content: content,
+      days: days,
+      source: "local"
+    };
+
+    localItems.push(newItem);
+    saveLocalItems();
+    closeAddModal();
+  }
+
+  // ---------- Selected list (main screen) ----------
+
+  function renderSelectedList() {
+    var wrap = document.getElementById("selected-list-wrap");
+    var items = combinedItems();
+    var selected = selectedIds
+      .map(function (id) { return items.find(function (it) { return it.id === id; }); })
+      .filter(Boolean);
+
+    if (selected.length === 0) {
+      wrap.innerHTML = '<p class="empty-state">선택된 업무가이드 항목이 없습니다</p>';
+      return;
+    }
+
+    var rows = selected.map(function (it, idx) {
+      var due = it.days !== null ? computeDueDate(it.days) : "-";
+      return (
+        '<tr>' +
+          '<td class="col-no">' + (idx + 1) + '</td>' +
+          '<td>' + escapeHtml(it.content) + '</td>' +
+          '<td class="col-date">' + escapeHtml(due) + '</td>' +
+          '<td class="col-del"><button type="button" class="btn btn-danger btn-small" data-remove-id="' + it.id + '" aria-label="선택 항목 삭제">삭제</button></td>' +
+        '</tr>'
+      );
+    }).join("");
+
+    wrap.innerHTML =
+      '<table class="item-table">' +
+        '<thead><tr>' +
+          '<th class="col-no">No</th><th>내용</th><th class="col-date">조치기한</th><th class="col-del">삭제</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+
+    wrap.querySelectorAll("[data-remove-id]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-remove-id");
+        selectedIds = selectedIds.filter(function (x) { return x !== id; });
+        renderSelectedList();
+      });
+    });
+  }
+
+  // ---------- Excel generation ----------
+
+  function generateExcel() {
+    try {
+      var workbook = new ExcelJS.Workbook();
+      var sheet = workbook.addWorksheet("업무가이드");
+
+      sheet.columns = [
+        { width: 6 },
+        { width: 78 },
+        { width: 16 }
+      ];
+
+      var thinBorder = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" }
+      };
+
+      var grayFill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE5E8EB" }
+      };
+
+      var greenFill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF2F6F5E" }
+      };
+
+      var docTitle = buildDocTitle();
+      var project = document.getElementById("f-project").value.trim();
+      var item = document.getElementById("f-item").value.trim();
+      var po = document.getElementById("f-po").value.trim();
+      var podate = document.getElementById("f-podate").value.trim();
+      var vendor = document.getElementById("f-vendor").value.trim();
+
+      // Row 1: title
+      sheet.mergeCells("A1:C1");
+      var titleCell = sheet.getCell("A1");
+      titleCell.value = docTitle;
+      titleCell.font = { bold: true, size: 15 };
+      titleCell.alignment = { vertical: "middle", horizontal: "left" };
+      sheet.getRow(1).height = 26;
+
+      // Row 2: 프로젝트명 / 품목명
+      setLabelValueRow(sheet, 2, "프로젝트명", project || "-", "품목명", item || "-");
+      // Row 3: 업체명 / PO 번호
+      setLabelValueRow(sheet, 3, "업체명", vendor || "-", "PO 번호", po || "-");
+      // Row 4: PO 납기
+      setLabelValueRow(sheet, 4, "PO 납기", podate || "-", "", "");
+
+      for (var r = 2; r <= 4; r++) {
+        sheet.getRow(r).eachCell({ includeEmpty: true }, function (cell) {
+          cell.border = thinBorder;
+        });
+      }
+
+      // Row 5: blank spacer
+      // (row 5 intentionally left empty)
+
+      // Row 6: header
+      var headerRow = sheet.getRow(6);
+      headerRow.getCell(1).value = "No";
+      headerRow.getCell(2).value = "업무가이드 내용 (Action Item)";
+      headerRow.getCell(3).value = "조치기한";
+      headerRow.eachCell(function (cell) {
+        cell.fill = greenFill;
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+        cell.border = thinBorder;
+      });
+
+      var items = combinedItems();
+      var selected = selectedIds
+        .map(function (id) { return items.find(function (it) { return it.id === id; }); })
+        .filter(Boolean);
+
+      var currentRow = 7;
+
+      if (selected.length === 0) {
+        sheet.mergeCells("A" + currentRow + ":C" + currentRow);
+        var emptyCell = sheet.getCell("A" + currentRow);
+        emptyCell.value = "선택된 업무가이드 항목이 없습니다";
+        emptyCell.alignment = { vertical: "middle", horizontal: "center" };
+        emptyCell.border = thinBorder;
+        sheet.getRow(currentRow).height = 24;
+        currentRow++;
+      } else {
+        selected.forEach(function (it, idx) {
+          var due = it.days !== null ? computeDueDate(it.days) : "-";
+          var row = sheet.getRow(currentRow);
+          row.getCell(1).value = idx + 1;
+          row.getCell(2).value = it.content;
+          row.getCell(3).value = due;
+
+          row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+          row.getCell(2).alignment = { vertical: "top", horizontal: "left", wrapText: true };
+          row.getCell(3).alignment = { vertical: "middle", horizontal: "center" };
+
+          row.eachCell({ includeEmpty: true }, function (cell) {
+            cell.border = thinBorder;
+          });
+
+          currentRow++;
+        });
+      }
+
+      // blank spacer row
+      currentRow++;
+
+      // signature row
+      sheet.getCell("A" + currentRow).value = "Doosan : ______________________";
+      sheet.getCell("C" + currentRow).value = "Supplier : ______________________";
+      currentRow++;
+
+      // date row
+      sheet.getCell("A" + currentRow).value = "작성일자 : " + todayStr;
+
+      var fileNameBase = (docTitle || "업무가이드").replace(/\s+/g, "_");
+
+      workbook.xlsx.writeBuffer().then(function (buffer) {
+        var blob = new Blob([buffer], { type: "application/octet-stream" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = fileNameBase + ".xlsx";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }).catch(function (err) {
+        console.error(err);
+        alert("엑셀 파일 생성 중 오류가 발생했습니다.");
+      });
+    } catch (e) {
+      console.error(e);
+      alert("엑셀 파일 생성 중 오류가 발생했습니다.");
+    }
+  }
+
+  function setLabelValueRow(sheet, rowNum, label1, value1, label2, value2) {
+    var row = sheet.getRow(rowNum);
+    row.getCell(1).value = label1;
+    row.getCell(2).value = value1;
+    if (label2) {
+      row.getCell(3).value = label2 + (value2 ? " : " + value2 : "");
+    }
+
+    var grayFill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFE5E8EB" }
+    };
+
+    row.getCell(1).fill = grayFill;
+    row.getCell(1).font = { bold: true };
+    row.getCell(1).alignment = { vertical: "middle", horizontal: "left" };
+    row.getCell(2).alignment = { vertical: "middle", horizontal: "left" };
+    row.getCell(3).alignment = { vertical: "middle", horizontal: "left" };
+  }
+
+  // ---------- Event wiring ----------
+
+  function bindEvents() {
+    ["f-project", "f-hogi", "f-item", "f-po", "f-podate", "f-vendor"].forEach(function (id) {
+      document.getElementById(id).addEventListener("input", renderTitlePreview);
+    });
+
+    document.getElementById("btn-open-select").addEventListener("click", openSelectModal);
+    document.getElementById("modal-select-close").addEventListener("click", closeSelectModal);
+    document.getElementById("btn-apply-select").addEventListener("click", applySelection);
+
+    document.getElementById("btn-open-add").addEventListener("click", openAddModal);
+    document.getElementById("modal-add-close").addEventListener("click", closeAddModal);
+    document.getElementById("btn-save-new").addEventListener("click", saveNewItem);
+
+    document.getElementById("btn-download-excel").addEventListener("click", generateExcel);
+
+    [document.getElementById("modal-select"), document.getElementById("modal-add")].forEach(function (overlay) {
+      overlay.addEventListener("click", function (e) {
+        if (e.target === overlay) overlay.classList.remove("open");
+      });
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        document.getElementById("modal-select").classList.remove("open");
+        document.getElementById("modal-add").classList.remove("open");
+      }
+    });
+  }
+
+  function init() {
+    loadLocalItems();
+    renderTitlePreview();
+    renderSelectedList();
+    bindEvents();
+
+    fetchMasterItemsAsync().finally(function () {
+      // items are combined dynamically wherever needed; nothing else required here.
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
+</script>
+
+</body>
+</html>
