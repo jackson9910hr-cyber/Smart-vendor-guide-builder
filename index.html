@@ -340,6 +340,30 @@
   .select-item-content {
     flex: 1;
     min-width: 0;
+    cursor: pointer;
+  }
+
+  .reorder-toggle-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 4px;
+  }
+
+  .drag-handle {
+    cursor: grab;
+    font-size: 16px;
+    color: var(--text-sub);
+    padding: 4px 6px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .select-item-row[draggable="true"] {
+    cursor: grab;
+  }
+
+  .select-item-row.dragging {
+    opacity: 0.4;
   }
 
   .tag {
@@ -423,7 +447,7 @@
       </div>
       <div class="field">
         <label for="f-podate">PO 납기</label>
-        <input type="date" id="f-podate">
+        <input type="text" id="f-podate" placeholder="예: 2026-07-16">
       </div>
       <div class="field">
         <label for="f-vendor">업체명</label>
@@ -472,7 +496,11 @@
       <button type="button" class="modal-close" id="modal-select-close" aria-label="팝업 닫기">&times;</button>
     </div>
     <div class="modal-body">
-      <p class="modal-note">삭제는 로컬에 추가한 항목에만 적용되며, 구글시트 원본 데이터는 변경되지 않습니다.</p>
+      <p class="modal-note">삭제/수정은 로컬에 추가한 항목에만 적용되며, 구글시트 원본 데이터는 변경되지 않습니다. 항목 내용을 클릭하면 선택/해제됩니다.</p>
+      <div class="reorder-toggle-row">
+        <button type="button" class="btn btn-ghost btn-small" id="btn-toggle-reorder" aria-label="순서 수정 모드 전환">순서 수정</button>
+      </div>
+      <p class="hint-text" id="reorder-hint" style="display:none;">항목을 드래그하여 순서를 변경하세요. 완료되면 다시 버튼을 눌러 선택 모드로 돌아갑니다.</p>
       <div id="select-item-list"></div>
     </div>
     <div class="modal-footer">
@@ -508,10 +536,10 @@
         <textarea id="new-content" rows="4" placeholder="업무가이드 내용을 입력하세요"></textarea>
       </div>
       <div class="field">
-        <label for="new-days">표준 조치요구일 (일 단위)</label>
-        <input type="number" id="new-days" min="0" placeholder="예: 15">
+        <label for="new-days">표준 조치요구일</label>
+        <input type="text" id="new-days" placeholder="예: 15  또는  해당공정 착수 20일전">
       </div>
-      <p class="hint-text">이 항목을 선택하면 오늘 날짜 + 입력한 일수로 조치기한이 자동 계산됩니다. 비워두면 기한 없음(-)으로 표시됩니다.</p>
+      <p class="hint-text">숫자만 입력하면 오늘 날짜 + 입력한 일수로 조치기한이 자동 계산됩니다. 숫자가 아닌 문구를 입력하면(예: "해당공정 착수 20일전", "출하 30일전") 입력한 내용이 조치기한에 그대로 표시됩니다. 비워두면 기한 없음(-)으로 표시됩니다.</p>
       <p class="hint-text">저장한 항목은 이 브라우저에 로컬로 저장되며, 구글시트에는 반영되지 않습니다.</p>
     </div>
     <div class="modal-footer">
@@ -528,9 +556,11 @@
 
   var CSV_URL = "https://docs.google.com/spreadsheets/d/1oDI2JMA4QYO5swWjUAhymaD-gCNw1G751YF4cvkwtEc/export?format=csv&gid=0";
   var LOCAL_ITEMS_KEY = "svg_local_items_v1";
+  var ITEM_ORDER_KEY = "svg_item_order_v1";
 
   var masterItems = [];
   var localItems = [];
+  var itemOrder = [];
   var selectedIds = [];
   var todayStr = formatDate(new Date());
 
@@ -556,6 +586,23 @@
     var base = new Date(todayStr + "T00:00:00");
     base.setDate(base.getDate() + Number(days));
     return formatDate(base);
+  }
+
+  // Accepts a raw string and returns: null (empty), a number (pure digits), or the
+  // original string as free-form text (e.g. "해당공정 착수 20일전").
+  function parseDaysValue(raw) {
+    var trimmed = (raw || "").trim();
+    if (trimmed === "") return null;
+    if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+    return trimmed;
+  }
+
+  // Resolves a parsed days value into the text shown as the due date:
+  // number -> computed YYYY-MM-DD, string -> shown as-is, null -> "-".
+  function resolveDueDate(days) {
+    if (days === null || days === undefined || days === "") return "-";
+    if (typeof days === "number") return computeDueDate(days);
+    return String(days);
   }
 
   function genId() {
@@ -606,9 +653,7 @@
       var category = (cols[0] || "").trim();
       var content = (cols[1] || "").trim();
       if (!category && !content) continue;
-      var daysRaw = (cols[2] || "").trim();
-      var days = daysRaw === "" ? null : parseInt(daysRaw, 10);
-      if (isNaN(days)) days = null;
+      var days = parseDaysValue(cols[2]);
       items.push({
         id: "m-" + i,
         category: category || "기타",
@@ -640,6 +685,24 @@
     }
   }
 
+  function loadItemOrder() {
+    try {
+      var raw = localStorage.getItem(ITEM_ORDER_KEY);
+      itemOrder = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(itemOrder)) itemOrder = [];
+    } catch (e) {
+      itemOrder = [];
+    }
+  }
+
+  function saveItemOrder() {
+    try {
+      localStorage.setItem(ITEM_ORDER_KEY, JSON.stringify(itemOrder));
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
   // ---------- Master fetch ----------
 
   function fetchMasterItemsAsync() {
@@ -660,8 +723,47 @@
       });
   }
 
+  // Returns master + local items sorted by the user's saved custom order.
+  // Newly discovered items (not yet in itemOrder) are appended and the
+  // saved order is updated so future renders keep the same sequence.
   function combinedItems() {
-    return masterItems.concat(localItems);
+    var raw = masterItems.concat(localItems);
+    var byId = {};
+    raw.forEach(function (it) { byId[it.id] = it; });
+
+    var ordered = [];
+    itemOrder.forEach(function (id) {
+      if (byId[id]) {
+        ordered.push(byId[id]);
+        delete byId[id];
+      }
+    });
+    raw.forEach(function (it) {
+      if (byId[it.id]) {
+        ordered.push(it);
+        delete byId[it.id];
+      }
+    });
+
+    var newOrderIds = ordered.map(function (it) { return it.id; });
+    if (JSON.stringify(newOrderIds) !== JSON.stringify(itemOrder)) {
+      itemOrder = newOrderIds;
+      saveItemOrder();
+    }
+    return ordered;
+  }
+
+  function reorderItem(draggedId, targetId) {
+    if (draggedId === targetId) return;
+    var ids = combinedItems().map(function (it) { return it.id; });
+    var fromIdx = ids.indexOf(draggedId);
+    var toIdx = ids.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    ids.splice(fromIdx, 1);
+    toIdx = ids.indexOf(targetId);
+    ids.splice(toIdx, 0, draggedId);
+    itemOrder = ids;
+    saveItemOrder();
   }
 
   // ---------- Title preview ----------
@@ -691,15 +793,31 @@
   // ---------- Select modal ----------
 
   var modalSelectedTemp = [];
+  var reorderMode = false;
 
   function openSelectModal() {
     modalSelectedTemp = selectedIds.slice();
+    reorderMode = false;
+    setReorderModeUI();
     renderSelectModalList();
     document.getElementById("modal-select").classList.add("open");
   }
 
   function closeSelectModal() {
     document.getElementById("modal-select").classList.remove("open");
+  }
+
+  function setReorderModeUI() {
+    var btn = document.getElementById("btn-toggle-reorder");
+    var hint = document.getElementById("reorder-hint");
+    btn.textContent = reorderMode ? "선택 모드로 돌아가기" : "순서 수정";
+    hint.style.display = reorderMode ? "block" : "none";
+  }
+
+  function toggleReorderMode() {
+    reorderMode = !reorderMode;
+    setReorderModeUI();
+    renderSelectModalList();
   }
 
   function renderSelectModalList() {
@@ -714,30 +832,48 @@
 
     var html = items.map(function (it) {
       var checked = modalSelectedTemp.indexOf(it.id) !== -1 ? "checked" : "";
-      var dueText = it.days !== null
-        ? "표준 조치요구일: " + it.days + "일 (선택 시 " + computeDueDate(it.days) + ")"
-        : "표준 조치요구일: 없음 (선택 시 기한 없음)";
+      var dueText;
+      if (it.days === null) {
+        dueText = "표준 조치요구일: 없음 (선택 시 기한 없음)";
+      } else if (typeof it.days === "number") {
+        dueText = "표준 조치요구일: " + it.days + "일 (선택 시 " + computeDueDate(it.days) + ")";
+      } else {
+        dueText = "표준 조치요구일: " + escapeHtml(it.days) + " (선택 시 조치기한에 그대로 반영)";
+      }
       var isLocal = it.source === "local";
+      var editBtn = isLocal
+        ? '<button type="button" class="btn btn-ghost btn-small" data-edit-id="' + it.id + '" aria-label="항목 수정">수정</button>'
+        : "";
       var deleteBtn = isLocal
         ? '<button type="button" class="btn btn-danger btn-small" data-delete-id="' + it.id + '" aria-label="항목 삭제">삭제</button>'
         : "";
       var tagClass = isLocal ? "tag local-tag" : "tag";
       var tagLabel = isLocal ? escapeHtml(it.category) + " · 로컬" : escapeHtml(it.category);
+      var handle = reorderMode
+        ? '<span class="drag-handle" aria-hidden="true">☰</span>'
+        : '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">';
+      var actions = reorderMode ? "" : (editBtn + deleteBtn);
 
       return (
-        '<div class="select-item-row">' +
-          '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">' +
-          '<div class="select-item-content">' +
+        '<div class="select-item-row" data-item-id="' + it.id + '"' + (reorderMode ? ' draggable="true"' : '') + '>' +
+          handle +
+          '<div class="select-item-content" data-content-id="' + it.id + '">' +
             '<span class="' + tagClass + '">' + tagLabel + '</span>' +
             '<div class="select-item-text">' + escapeHtml(it.content) + '</div>' +
-            '<div class="select-item-date">' + escapeHtml(dueText) + '</div>' +
+            '<div class="select-item-date">' + dueText + '</div>' +
           '</div>' +
-          deleteBtn +
+          actions +
         '</div>'
       );
     }).join("");
 
     wrap.innerHTML = html;
+
+    if (reorderMode) {
+      bindReorderDragEvents(wrap);
+      updateSelectedCounter();
+      return;
+    }
 
     var checkboxes = wrap.querySelectorAll("input[type=checkbox]");
     checkboxes.forEach(function (cb) {
@@ -752,12 +888,32 @@
       });
     });
 
+    var contentAreas = wrap.querySelectorAll("[data-content-id]");
+    contentAreas.forEach(function (content) {
+      content.addEventListener("click", function () {
+        var id = content.getAttribute("data-content-id");
+        var cb = wrap.querySelector('input[type=checkbox][data-item-id="' + id + '"]');
+        if (!cb) return;
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event("change"));
+      });
+    });
+
+    var editButtons = wrap.querySelectorAll("[data-edit-id]");
+    editButtons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openEditModal(btn.getAttribute("data-edit-id"));
+      });
+    });
+
     var deleteButtons = wrap.querySelectorAll("[data-delete-id]");
     deleteButtons.forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-delete-id");
         localItems = localItems.filter(function (x) { return x.id !== id; });
         saveLocalItems();
+        itemOrder = itemOrder.filter(function (x) { return x !== id; });
+        saveItemOrder();
         modalSelectedTemp = modalSelectedTemp.filter(function (x) { return x !== id; });
         selectedIds = selectedIds.filter(function (x) { return x !== id; });
         renderSelectModalList();
@@ -768,22 +924,70 @@
     updateSelectedCounter();
   }
 
+  function bindReorderDragEvents(wrap) {
+    var rows = wrap.querySelectorAll(".select-item-row");
+    rows.forEach(function (row) {
+      row.addEventListener("dragstart", function (e) {
+        e.dataTransfer.setData("text/plain", row.getAttribute("data-item-id"));
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+      row.addEventListener("dragend", function () {
+        row.classList.remove("dragging");
+      });
+      row.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      });
+      row.addEventListener("drop", function (e) {
+        e.preventDefault();
+        var draggedId = e.dataTransfer.getData("text/plain");
+        var targetId = row.getAttribute("data-item-id");
+        reorderItem(draggedId, targetId);
+        renderSelectModalList();
+      });
+    });
+  }
+
   function updateSelectedCounter() {
     document.getElementById("selected-counter").textContent = modalSelectedTemp.length + "개 선택됨";
   }
 
   function applySelection() {
-    selectedIds = modalSelectedTemp.slice();
+    var ordered = combinedItems();
+    selectedIds = ordered
+      .filter(function (it) { return modalSelectedTemp.indexOf(it.id) !== -1; })
+      .map(function (it) { return it.id; });
     closeSelectModal();
     renderSelectedList();
   }
 
   // ---------- Add modal ----------
 
+  var editingItemId = null;
+
+  function setAddModalMode(isEdit) {
+    document.getElementById("modal-add-title").textContent = isEdit ? "업무가이드 항목 수정" : "새 업무가이드 내용 추가";
+    document.getElementById("btn-save-new").textContent = isEdit ? "수정 완료" : "저장";
+  }
+
   function openAddModal() {
+    editingItemId = null;
+    setAddModalMode(false);
     document.getElementById("new-category").value = "일반";
     document.getElementById("new-content").value = "";
     document.getElementById("new-days").value = "";
+    document.getElementById("modal-add").classList.add("open");
+  }
+
+  function openEditModal(id) {
+    var item = localItems.find(function (it) { return it.id === id; });
+    if (!item) return;
+    editingItemId = id;
+    setAddModalMode(true);
+    document.getElementById("new-category").value = item.category;
+    document.getElementById("new-content").value = item.content;
+    document.getElementById("new-days").value = item.days === null ? "" : String(item.days);
     document.getElementById("modal-add").classList.add("open");
   }
 
@@ -794,27 +998,39 @@
   function saveNewItem() {
     var category = document.getElementById("new-category").value;
     var content = document.getElementById("new-content").value.trim();
-    var daysRaw = document.getElementById("new-days").value.trim();
+    var daysRaw = document.getElementById("new-days").value;
 
     if (!content) {
       alert("업무가이드 내용을 입력해 주세요.");
       return;
     }
 
-    var days = daysRaw === "" ? null : parseInt(daysRaw, 10);
-    if (daysRaw !== "" && isNaN(days)) days = null;
+    var days = parseDaysValue(daysRaw);
 
-    var newItem = {
-      id: genId(),
-      category: category,
-      content: content,
-      days: days,
-      source: "local"
-    };
+    if (editingItemId) {
+      var existing = localItems.find(function (it) { return it.id === editingItemId; });
+      if (existing) {
+        existing.category = category;
+        existing.content = content;
+        existing.days = days;
+        saveLocalItems();
+      }
+    } else {
+      var newItem = {
+        id: genId(),
+        category: category,
+        content: content,
+        days: days,
+        source: "local"
+      };
+      localItems.push(newItem);
+      saveLocalItems();
+    }
 
-    localItems.push(newItem);
-    saveLocalItems();
+    editingItemId = null;
     closeAddModal();
+    renderSelectModalList();
+    renderSelectedList();
   }
 
   // ---------- Selected list (main screen) ----------
@@ -832,7 +1048,7 @@
     }
 
     var rows = selected.map(function (it, idx) {
-      var due = it.days !== null ? computeDueDate(it.days) : "-";
+      var due = resolveDueDate(it.days);
       return (
         '<tr>' +
           '<td class="col-no">' + (idx + 1) + '</td>' +
@@ -868,9 +1084,10 @@
       var sheet = workbook.addWorksheet("업무가이드");
 
       sheet.columns = [
-        { width: 6 },
+        { width: 12 },
         { width: 78 },
-        { width: 16 }
+        { width: 16 },
+        { width: 24 }
       ];
 
       var thinBorder = {
@@ -894,6 +1111,7 @@
 
       var docTitle = buildDocTitle();
       var project = document.getElementById("f-project").value.trim();
+      var hogi = document.getElementById("f-hogi").value.trim();
       var item = document.getElementById("f-item").value.trim();
       var po = document.getElementById("f-po").value.trim();
       var podate = document.getElementById("f-podate").value.trim();
@@ -909,10 +1127,10 @@
 
       // Row 2: 프로젝트명 / 품목명
       setLabelValueRow(sheet, 2, "프로젝트명", project || "-", "품목명", item || "-");
-      // Row 3: 업체명 / PO 번호
-      setLabelValueRow(sheet, 3, "업체명", vendor || "-", "PO 번호", po || "-");
-      // Row 4: PO 납기
-      setLabelValueRow(sheet, 4, "PO 납기", podate || "-", "", "");
+      // Row 3: 호기 / PO 번호
+      setLabelValueRow(sheet, 3, "호기", hogi || "-", "PO 번호", po || "-");
+      // Row 4: 업체명 / PO 납기
+      setLabelValueRow(sheet, 4, "업체명", vendor || "-", "PO 납기", podate || "-");
 
       for (var r = 2; r <= 4; r++) {
         sheet.getRow(r).eachCell({ includeEmpty: true }, function (cell) {
@@ -952,7 +1170,7 @@
         currentRow++;
       } else {
         selected.forEach(function (it, idx) {
-          var due = it.days !== null ? computeDueDate(it.days) : "-";
+          var due = resolveDueDate(it.days);
           var row = sheet.getRow(currentRow);
           row.getCell(1).value = idx + 1;
           row.getCell(2).value = it.content;
@@ -1007,9 +1225,8 @@
     var row = sheet.getRow(rowNum);
     row.getCell(1).value = label1;
     row.getCell(2).value = value1;
-    if (label2) {
-      row.getCell(3).value = label2 + (value2 ? " : " + value2 : "");
-    }
+    row.getCell(3).value = label2;
+    row.getCell(4).value = value2;
 
     var grayFill = {
       type: "pattern",
@@ -1017,11 +1234,13 @@
       fgColor: { argb: "FFE5E8EB" }
     };
 
-    row.getCell(1).fill = grayFill;
-    row.getCell(1).font = { bold: true };
-    row.getCell(1).alignment = { vertical: "middle", horizontal: "left" };
-    row.getCell(2).alignment = { vertical: "middle", horizontal: "left" };
-    row.getCell(3).alignment = { vertical: "middle", horizontal: "left" };
+    [1, 3].forEach(function (idx) {
+      row.getCell(idx).fill = grayFill;
+      row.getCell(idx).font = { bold: true };
+    });
+    for (var c = 1; c <= 4; c++) {
+      row.getCell(c).alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+    }
   }
 
   // ---------- Event wiring ----------
@@ -1034,6 +1253,7 @@
     document.getElementById("btn-open-select").addEventListener("click", openSelectModal);
     document.getElementById("modal-select-close").addEventListener("click", closeSelectModal);
     document.getElementById("btn-apply-select").addEventListener("click", applySelection);
+    document.getElementById("btn-toggle-reorder").addEventListener("click", toggleReorderMode);
 
     document.getElementById("btn-open-add").addEventListener("click", openAddModal);
     document.getElementById("modal-add-close").addEventListener("click", closeAddModal);
@@ -1057,6 +1277,7 @@
 
   function init() {
     loadLocalItems();
+    loadItemOrder();
     renderTitlePreview();
     renderSelectedList();
     bindEvents();
