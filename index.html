@@ -381,9 +381,31 @@
 
   .reorder-toggle-row {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 8px;
     margin-bottom: 4px;
+  }
+
+  .category-search-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--white);
+  }
+
+  .category-search-input:focus {
+    border-color: var(--accent);
+  }
+
+  @media (max-width: 640px) {
+    .reorder-toggle-row { flex-wrap: wrap; }
+    .category-search-input { flex: 1 1 100%; order: -1; }
   }
 
   .drag-handle {
@@ -540,6 +562,7 @@
     <div class="modal-body">
       <p class="modal-note">수정은 모든 항목에 적용되며(구글시트 항목은 시트에도 반영됩니다), 삭제는 로컬에 추가한 항목에만 적용됩니다. 항목 내용을 클릭하면 선택/해제됩니다.</p>
       <div class="reorder-toggle-row">
+        <input type="text" id="category-search" class="category-search-input" placeholder="구분 검색 (예: 일반, PO)" aria-label="구분으로 항목 검색">
         <button type="button" class="btn btn-ghost btn-small" id="btn-select-all" aria-label="전체 항목 선택">전체 선택</button>
         <button type="button" class="btn btn-ghost btn-small" id="btn-toggle-reorder" aria-label="순서 수정 모드 전환">순서 수정</button>
       </div>
@@ -563,16 +586,7 @@
     <div class="modal-body">
       <div class="field" style="margin-bottom:14px;">
         <label for="new-category">구분</label>
-        <select id="new-category">
-          <option value="일반">일반</option>
-          <option value="PO">PO</option>
-          <option value="MPS">MPS</option>
-          <option value="운송">운송</option>
-          <option value="납기">납기</option>
-          <option value="품질">품질</option>
-          <option value="시스템">시스템</option>
-          <option value="기타">기타</option>
-        </select>
+        <input type="text" id="new-category" placeholder="예: 일반, PO, MPS 등 직접 입력">
       </div>
       <div class="field" style="margin-bottom:14px;">
         <label for="new-content">업무가이드 내용</label>
@@ -825,13 +839,30 @@
 
   var modalSelectedTemp = [];
   var reorderMode = false;
+  var categorySearchTerm = "";
 
   function openSelectModal() {
     modalSelectedTemp = selectedIds.slice();
     reorderMode = false;
+    categorySearchTerm = "";
+    document.getElementById("category-search").value = "";
     setReorderModeUI();
     renderSelectModalList();
     document.getElementById("modal-select").classList.add("open");
+  }
+
+  function getVisibleItems() {
+    var items = combinedItems();
+    if (!categorySearchTerm) return items;
+    var term = categorySearchTerm.toLowerCase();
+    return items.filter(function (it) {
+      return (it.category || "").toLowerCase().indexOf(term) !== -1;
+    });
+  }
+
+  function handleCategorySearchInput(e) {
+    categorySearchTerm = e.target.value.trim();
+    renderSelectModalList();
   }
 
   function closeSelectModal() {
@@ -855,10 +886,12 @@
 
   function renderSelectModalList() {
     var wrap = document.getElementById("select-item-list");
-    var items = combinedItems();
+    var items = getVisibleItems();
 
     if (items.length === 0) {
-      wrap.innerHTML = '<p class="empty-state">표시할 업무가이드 항목이 없습니다</p>';
+      wrap.innerHTML = categorySearchTerm
+        ? '<p class="empty-state">"' + escapeHtml(categorySearchTerm) + '"에 해당하는 항목이 없습니다</p>'
+        : '<p class="empty-state">표시할 업무가이드 항목이 없습니다</p>';
       updateSelectedCounter();
       return;
     }
@@ -986,7 +1019,12 @@
 
   function selectAllItems() {
     if (reorderMode) return;
-    modalSelectedTemp = combinedItems().map(function (it) { return it.id; });
+    // Adds the currently visible (search-filtered) items to the existing
+    // selection rather than replacing it, so selecting "PO" items then
+    // searching "MPS" and selecting again keeps both groups checked.
+    getVisibleItems().forEach(function (it) {
+      if (modalSelectedTemp.indexOf(it.id) === -1) modalSelectedTemp.push(it.id);
+    });
     renderSelectModalList();
   }
 
@@ -1545,7 +1583,8 @@
         return;
       }
 
-      var html = buildOrderInfoHtmlTable() + buildSelectedItemsHtmlTable(selected);
+      var spacerHtml = '<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.8;">&nbsp;</div>';
+      var html = buildOrderInfoHtmlTable() + spacerHtml + buildSelectedItemsHtmlTable(selected);
       var text = buildOrderInfoPlainText() + "\n" + buildSelectedItemsPlainText(selected);
 
       if (navigator.clipboard && typeof window.ClipboardItem === "function") {
@@ -1585,6 +1624,7 @@
     document.getElementById("btn-apply-select").addEventListener("click", applySelection);
     document.getElementById("btn-toggle-reorder").addEventListener("click", toggleReorderMode);
     document.getElementById("btn-select-all").addEventListener("click", selectAllItems);
+    document.getElementById("category-search").addEventListener("input", handleCategorySearchInput);
 
     document.getElementById("btn-open-add").addEventListener("click", openAddModal);
     document.getElementById("modal-add-close").addEventListener("click", closeAddModal);
