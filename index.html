@@ -218,6 +218,10 @@
     white-space: nowrap;
   }
 
+  table.item-table td.col-content {
+    white-space: pre-wrap;
+  }
+
   table.item-table td.col-del { text-align: center; white-space: nowrap; }
 
   .empty-state {
@@ -1208,7 +1212,7 @@
       return (
         '<tr>' +
           '<td class="col-no">' + (idx + 1) + '</td>' +
-          '<td>' + escapeHtml(it.content) + '</td>' +
+          '<td class="col-content">' + escapeHtml(it.content) + '</td>' +
           '<td class="col-date">' + escapeHtml(due) + '</td>' +
           '<td class="col-del"><button type="button" class="btn btn-danger btn-small" data-remove-id="' + it.id + '" aria-label="선택 항목 삭제">삭제</button></td>' +
         '</tr>'
@@ -1446,6 +1450,59 @@
     return lines.join("\n");
   }
 
+  // Mirrors the order-info block from the Excel export (title + the
+  // 프로젝트명/품목명, 호기/PO번호, 업체명/PO납기 4-column grid) so a copied
+  // table carries the same context as the downloaded file.
+  function buildOrderInfoHtmlTable() {
+    var docTitle = buildDocTitle();
+    var project = document.getElementById("f-project").value.trim();
+    var hogi = document.getElementById("f-hogi").value.trim();
+    var item = document.getElementById("f-item").value.trim();
+    var po = document.getElementById("f-po").value.trim();
+    var podate = document.getElementById("f-podate").value.trim();
+    var vendor = document.getElementById("f-vendor").value.trim();
+
+    var labelStyle = "border:1px solid #999999;padding:6px 10px;background:#e5e8eb;font-weight:bold;";
+    var valueStyle = "border:1px solid #999999;padding:6px 10px;";
+
+    function infoRow(label1, value1, label2, value2) {
+      return (
+        '<tr>' +
+          '<td style="' + labelStyle + '">' + escapeHtml(label1) + '</td>' +
+          '<td style="' + valueStyle + '">' + escapeHtml(value1 || "-") + '</td>' +
+          '<td style="' + labelStyle + '">' + escapeHtml(label2) + '</td>' +
+          '<td style="' + valueStyle + '">' + escapeHtml(value2 || "-") + '</td>' +
+        '</tr>'
+      );
+    }
+
+    return (
+      '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;margin-bottom:10px;">' +
+        '<tr><td colspan="4" style="padding:6px 10px;font-weight:bold;font-size:15px;">' + escapeHtml(docTitle) + '</td></tr>' +
+        infoRow("프로젝트명", project, "품목명", item) +
+        infoRow("호기", hogi, "PO 번호", po) +
+        infoRow("업체명", vendor, "PO 납기", podate) +
+      '</table>'
+    );
+  }
+
+  function buildOrderInfoPlainText() {
+    var project = document.getElementById("f-project").value.trim();
+    var hogi = document.getElementById("f-hogi").value.trim();
+    var item = document.getElementById("f-item").value.trim();
+    var po = document.getElementById("f-po").value.trim();
+    var podate = document.getElementById("f-podate").value.trim();
+    var vendor = document.getElementById("f-vendor").value.trim();
+
+    return [
+      buildDocTitle(),
+      "프로젝트명\t" + (project || "-") + "\t품목명\t" + (item || "-"),
+      "호기\t" + (hogi || "-") + "\tPO 번호\t" + (po || "-"),
+      "업체명\t" + (vendor || "-") + "\tPO 납기\t" + (podate || "-"),
+      ""
+    ].join("\n");
+  }
+
   function setCopyStatus(text, isError) {
     var el = document.getElementById("copy-status");
     if (!el) return;
@@ -1488,8 +1545,8 @@
         return;
       }
 
-      var html = buildSelectedItemsHtmlTable(selected);
-      var text = buildSelectedItemsPlainText(selected);
+      var html = buildOrderInfoHtmlTable() + buildSelectedItemsHtmlTable(selected);
+      var text = buildOrderInfoPlainText() + "\n" + buildSelectedItemsPlainText(selected);
 
       if (navigator.clipboard && typeof window.ClipboardItem === "function") {
         var item = new ClipboardItem({
