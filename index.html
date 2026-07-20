@@ -346,6 +346,7 @@
   .reorder-toggle-row {
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
     margin-bottom: 4px;
   }
 
@@ -497,8 +498,9 @@
       <button type="button" class="modal-close" id="modal-select-close" aria-label="팝업 닫기">&times;</button>
     </div>
     <div class="modal-body">
-      <p class="modal-note">삭제/수정은 로컬에 추가한 항목에만 적용되며, 구글시트 원본 데이터는 변경되지 않습니다. 항목 내용을 클릭하면 선택/해제됩니다.</p>
+      <p class="modal-note">수정은 모든 항목에 적용되며(구글시트 항목은 시트에도 반영됩니다), 삭제는 로컬에 추가한 항목에만 적용됩니다. 항목 내용을 클릭하면 선택/해제됩니다.</p>
       <div class="reorder-toggle-row">
+        <button type="button" class="btn btn-ghost btn-small" id="btn-select-all" aria-label="전체 항목 선택">전체 선택</button>
         <button type="button" class="btn btn-ghost btn-small" id="btn-toggle-reorder" aria-label="순서 수정 모드 전환">순서 수정</button>
       </div>
       <p class="hint-text" id="reorder-hint" style="display:none;">항목을 드래그하여 순서를 변경하세요. 완료되면 다시 버튼을 눌러 선택 모드로 돌아갑니다.</p>
@@ -679,7 +681,8 @@
         masterItems = data.items.map(function (it, idx) {
           var rawDays = it.days === null || it.days === undefined ? "" : it.days;
           return {
-            id: "m-" + idx,
+            id: "m-" + (it.row || idx),
+            row: it.row || null,
             category: it.category || "기타",
             content: it.content || "",
             days: parseDaysValue(String(rawDays)),
@@ -779,8 +782,10 @@
   function setReorderModeUI() {
     var btn = document.getElementById("btn-toggle-reorder");
     var hint = document.getElementById("reorder-hint");
+    var selectAllBtn = document.getElementById("btn-select-all");
     btn.textContent = reorderMode ? "선택 모드로 돌아가기" : "순서 수정";
     hint.style.display = reorderMode ? "block" : "none";
+    selectAllBtn.style.display = reorderMode ? "none" : "inline-flex";
   }
 
   function toggleReorderMode() {
@@ -810,9 +815,7 @@
         dueText = "표준 조치요구일: " + escapeHtml(it.days) + " (선택 시 조치기한에 그대로 반영)";
       }
       var isLocal = it.source === "local";
-      var editBtn = isLocal
-        ? '<button type="button" class="btn btn-ghost btn-small" data-edit-id="' + it.id + '" aria-label="항목 수정">수정</button>'
-        : "";
+      var editBtn = '<button type="button" class="btn btn-ghost btn-small" data-edit-id="' + it.id + '" aria-label="항목 수정">수정</button>';
       var deleteBtn = isLocal
         ? '<button type="button" class="btn btn-danger btn-small" data-delete-id="' + it.id + '" aria-label="항목 삭제">삭제</button>'
         : "";
@@ -922,6 +925,12 @@
     document.getElementById("selected-counter").textContent = modalSelectedTemp.length + "개 선택됨";
   }
 
+  function selectAllItems() {
+    if (reorderMode) return;
+    modalSelectedTemp = combinedItems().map(function (it) { return it.id; });
+    renderSelectModalList();
+  }
+
   function applySelection() {
     var ordered = combinedItems();
     selectedIds = ordered
@@ -950,7 +959,8 @@
   }
 
   function openEditModal(id) {
-    var item = localItems.find(function (it) { return it.id === id; });
+    var item = localItems.find(function (it) { return it.id === id; }) ||
+      masterItems.find(function (it) { return it.id === id; });
     if (!item) return;
     editingItemId = id;
     setAddModalMode(true);
@@ -977,12 +987,25 @@
     var days = parseDaysValue(daysRaw);
 
     if (editingItemId) {
-      var existing = localItems.find(function (it) { return it.id === editingItemId; });
-      if (existing) {
-        existing.category = category;
-        existing.content = content;
-        existing.days = days;
+      var existingLocal = localItems.find(function (it) { return it.id === editingItemId; });
+      var existingMaster = masterItems.find(function (it) { return it.id === editingItemId; });
+
+      if (existingLocal) {
+        existingLocal.category = category;
+        existingLocal.content = content;
+        existingLocal.days = days;
         saveLocalItems();
+      } else if (existingMaster) {
+        var candidate = { row: existingMaster.row, category: category, content: content, days: days };
+        updateItemInSheet(candidate).then(function (ok) {
+          if (ok) {
+            existingMaster.category = category;
+            existingMaster.content = content;
+            existingMaster.days = days;
+          }
+          renderSelectModalList();
+          renderSelectedList();
+        });
       }
     } else {
       var newItem = {
@@ -1049,6 +1072,7 @@
           localItems = localItems.filter(function (x) { return x.id !== item.id; });
           saveLocalItems();
           item.source = "master";
+          item.row = data.row || null;
           masterItems.push(item);
           setSyncStatus("구글시트에 저장되었습니다.");
           renderSelectModalList();
@@ -1060,6 +1084,47 @@
       })
       .catch(function (err) {
         setSyncStatus("구글시트 연동 실패: " + err.message + " (이 브라우저에만 저장됨)", true);
+      });
+  }
+
+  // Updates an existing sheet row for a master-sourced item via Apps
+  // Script. Resolves true/false so callers can decide whether to also
+  // update local state.
+  function updateItemInSheet(item) {
+    if (!SHEET_WEBAPP_URL || !item.row) {
+      return Promise.resolve(false);
+    }
+
+    setSyncStatus("구글시트에 반영 중...");
+
+    return fetch(SHEET_WEBAPP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        token: SHEET_WEBAPP_TOKEN,
+        action: "update",
+        row: item.row,
+        category: item.category,
+        content: item.content,
+        days: item.days === null ? "" : item.days
+      })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (data && data.ok) {
+          setSyncStatus("구글시트에 반영되었습니다.");
+          return true;
+        }
+        var reason = data && data.error ? data.error : "알 수 없는 오류";
+        setSyncStatus("구글시트 반영 실패: " + reason, true);
+        return false;
+      })
+      .catch(function (err) {
+        setSyncStatus("구글시트 연동 실패: " + err.message, true);
+        return false;
       });
   }
 
@@ -1286,6 +1351,7 @@
     document.getElementById("modal-select-close").addEventListener("click", closeSelectModal);
     document.getElementById("btn-apply-select").addEventListener("click", applySelection);
     document.getElementById("btn-toggle-reorder").addEventListener("click", toggleReorderMode);
+    document.getElementById("btn-select-all").addEventListener("click", selectAllItems);
 
     document.getElementById("btn-open-add").addEventListener("click", openAddModal);
     document.getElementById("modal-add-close").addEventListener("click", closeAddModal);

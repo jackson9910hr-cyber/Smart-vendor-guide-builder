@@ -4,10 +4,15 @@
 // spreadsheet stay fully private (sharing: Restricted / owner only) while
 // still serving its checklist rows out to the public web app:
 //
-//   doGet  -> read-only: returns the sheet's rows as JSON (no auth needed;
-//             this is the same data the app's users are meant to see).
-//   doPost -> write: appends a row, gated by a SECRET_TOKEN script
-//             property so random callers of this URL can't spam the sheet.
+//   doGet  -> read-only: returns the sheet's rows as JSON, each tagged with
+//             its actual sheet row number so edits can target it precisely.
+//             No auth needed; this is the same data the app's users are
+//             meant to see.
+//   doPost -> write: gated by a SECRET_TOKEN script property so random
+//             callers of this URL can't spam the sheet.
+//             - default (no "action"): appends a new row.
+//             - action: "update": overwrites an existing row (by its row
+//               number) with new category/content/days.
 //
 // Setup:
 // 1. Paste this file into the bound Apps Script project's Code.gs, save.
@@ -37,17 +42,7 @@ function doGet(e) {
       var content = (row[1] || "").toString().trim();
       if (!category && !content) continue;
 
-      var rawDays = row[2];
-      var days;
-      if (rawDays === "" || rawDays === null || rawDays === undefined) {
-        days = "";
-      } else if (typeof rawDays === "number") {
-        days = rawDays;
-      } else {
-        days = String(rawDays).trim();
-      }
-
-      items.push({ category: category, content: content, days: days });
+      items.push({ row: i + 1, category: category, content: content, days: normalizeDays(row[2]) });
     }
 
     return jsonOutput({ ok: true, items: items });
@@ -71,18 +66,31 @@ function doPost(e) {
     }
 
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-    sheet.appendRow([
-      data.category || "",
-      data.content,
-      data.days === null || data.days === undefined ? "" : data.days
-    ]);
+    var daysValue = data.days === null || data.days === undefined ? "" : data.days;
 
-    return jsonOutput({ ok: true });
+    if (data.action === "update") {
+      var rowNum = parseInt(data.row, 10);
+      var lastRow = sheet.getLastRow();
+      if (!rowNum || rowNum < 2 || rowNum > lastRow) {
+        return jsonOutput({ ok: false, error: "invalid row" });
+      }
+      sheet.getRange(rowNum, 1, 1, 3).setValues([[data.category || "", data.content, daysValue]]);
+      return jsonOutput({ ok: true, row: rowNum });
+    }
+
+    sheet.appendRow([data.category || "", data.content, daysValue]);
+    return jsonOutput({ ok: true, row: sheet.getLastRow() });
   } catch (err) {
     return jsonOutput({ ok: false, error: String(err) });
   } finally {
     lock.releaseLock();
   }
+}
+
+function normalizeDays(rawDays) {
+  if (rawDays === "" || rawDays === null || rawDays === undefined) return "";
+  if (typeof rawDays === "number") return rawDays;
+  return String(rawDays).trim();
 }
 
 function jsonOutput(obj) {
