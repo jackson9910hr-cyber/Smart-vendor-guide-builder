@@ -696,8 +696,12 @@
   }
 
   // Returns master + local items sorted by the user's saved custom order.
-  // Newly discovered items (not yet in itemOrder) are appended and the
-  // saved order is updated so future renders keep the same sequence.
+  // Items not yet in itemOrder (brand new, or whose source hasn't loaded
+  // yet) are appended for display only - this function never writes to
+  // itemOrder/localStorage itself. Persisting order changes is done
+  // explicitly by reconcileItemOrder() and reorderItem(), so a render that
+  // happens to run before master items have finished loading can't
+  // mistake "not loaded yet" for "deleted" and wipe out their saved order.
   function combinedItems() {
     var raw = masterItems.concat(localItems);
     var byId = {};
@@ -717,12 +721,27 @@
       }
     });
 
-    var newOrderIds = ordered.map(function (it) { return it.id; });
-    if (JSON.stringify(newOrderIds) !== JSON.stringify(itemOrder)) {
-      itemOrder = newOrderIds;
+    return ordered;
+  }
+
+  // Persists itemOrder so it includes every currently-known item id -
+  // pruning ids that no longer exist anywhere and appending new ones.
+  // Only call this once all relevant sources (master fetch + local items)
+  // have actually finished loading, or after a genuine deletion.
+  function reconcileItemOrder() {
+    var raw = masterItems.concat(localItems);
+    var knownIds = {};
+    raw.forEach(function (it) { knownIds[it.id] = true; });
+
+    var newOrder = itemOrder.filter(function (id) { return knownIds[id]; });
+    raw.forEach(function (it) {
+      if (newOrder.indexOf(it.id) === -1) newOrder.push(it.id);
+    });
+
+    if (JSON.stringify(newOrder) !== JSON.stringify(itemOrder)) {
+      itemOrder = newOrder;
       saveItemOrder();
     }
-    return ordered;
   }
 
   function reorderItem(draggedId, targetId) {
@@ -1017,6 +1036,7 @@
       };
       localItems.push(newItem);
       saveLocalItems();
+      reconcileItemOrder();
       syncItemToSheet(newItem);
     }
 
@@ -1381,7 +1401,12 @@
     bindEvents();
 
     fetchMasterItemsAsync().finally(function () {
-      // items are combined dynamically wherever needed; nothing else required here.
+      // Only now is the full item set known - safe to prune/append itemOrder.
+      reconcileItemOrder();
+      renderSelectedList();
+      if (document.getElementById("modal-select").classList.contains("open")) {
+        renderSelectModalList();
+      }
     });
   }
 
