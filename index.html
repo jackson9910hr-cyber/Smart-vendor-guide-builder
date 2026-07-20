@@ -1147,7 +1147,12 @@
   // Script. Resolves true/false so callers can decide whether to also
   // update local state.
   function updateItemInSheet(item) {
-    if (!SHEET_WEBAPP_URL || !item.row) {
+    if (!SHEET_WEBAPP_URL) {
+      setSyncStatus("구글시트 연동이 설정되어 있지 않습니다.", true);
+      return Promise.resolve(false);
+    }
+    if (!item.row) {
+      setSyncStatus("구글시트 반영 실패: 이 항목에 행 번호 정보가 없습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.", true);
       return Promise.resolve(false);
     }
 
