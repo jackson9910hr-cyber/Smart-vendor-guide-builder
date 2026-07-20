@@ -234,11 +234,43 @@
     text-align: center;
   }
 
-  .excel-btn-wrap .btn-primary {
-    width: 100%;
-    max-width: 420px;
+  .excel-btn-row {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    gap: 10px;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  .excel-btn-row .btn-primary {
+    flex: 1;
     padding: 14px 20px;
     font-size: 16px;
+  }
+
+  .excel-btn-row .btn-copy {
+    flex: 0 0 auto;
+    padding: 14px 18px;
+    font-size: 15px;
+    background: transparent;
+    color: var(--white);
+    border-color: var(--white);
+  }
+
+  .excel-btn-row .btn-copy:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .copy-status {
+    color: var(--white);
+    opacity: 0.85;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+
+  @media (max-width: 640px) {
+    .excel-btn-row { flex-direction: column; }
   }
 
   .footer-notice {
@@ -481,9 +513,13 @@
     </div>
   </section>
 
-  <!-- 엑셀 다운로드 -->
+  <!-- 엑셀 다운로드 / 표 복사 -->
   <div class="excel-btn-wrap">
-    <button type="button" class="btn btn-primary" id="btn-download-excel" aria-label="업무가이드 엑셀 파일 다운로드">엑셀 다운로드</button>
+    <div class="excel-btn-row">
+      <button type="button" class="btn btn-primary" id="btn-download-excel" aria-label="업무가이드 엑셀 파일 다운로드">엑셀 다운로드</button>
+      <button type="button" class="btn btn-copy" id="btn-copy-table" aria-label="선택된 업무가이드 항목을 표로 복사">복사하기</button>
+    </div>
+    <p class="copy-status" id="copy-status" style="display:none;"></p>
   </div>
 
   <p class="footer-notice">모든 데이터는 브라우저 내에서만 처리되며, 외부 서버로 전송되지 않습니다.</p>
@@ -1360,6 +1396,121 @@
     }
   }
 
+  // ---------- Copy selected items as a table ----------
+
+  function getSelectedItemsInOrder() {
+    var items = combinedItems();
+    return selectedIds
+      .map(function (id) { return items.find(function (it) { return it.id === id; }); })
+      .filter(Boolean);
+  }
+
+  function buildSelectedItemsHtmlTable(selected) {
+    var headerHtml =
+      '<tr>' +
+        '<th style="border:1px solid #999999;padding:6px 10px;background:#2F6F5E;color:#ffffff;text-align:center;">No</th>' +
+        '<th style="border:1px solid #999999;padding:6px 10px;background:#2F6F5E;color:#ffffff;text-align:center;">업무가이드 내용 (Action Item)</th>' +
+        '<th style="border:1px solid #999999;padding:6px 10px;background:#2F6F5E;color:#ffffff;text-align:center;">조치기한</th>' +
+      '</tr>';
+
+    var rowsHtml = selected.map(function (it, idx) {
+      var due = resolveDueDate(it.days);
+      var contentHtml = escapeHtml(it.content).replace(/\n/g, "<br>");
+      return (
+        '<tr>' +
+          '<td style="border:1px solid #999999;padding:6px 10px;text-align:center;">' + (idx + 1) + '</td>' +
+          '<td style="border:1px solid #999999;padding:6px 10px;">' + contentHtml + '</td>' +
+          '<td style="border:1px solid #999999;padding:6px 10px;text-align:center;">' + escapeHtml(due) + '</td>' +
+        '</tr>'
+      );
+    }).join("");
+
+    return (
+      '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">' +
+        headerHtml + rowsHtml +
+      '</table>'
+    );
+  }
+
+  function buildSelectedItemsPlainText(selected) {
+    var lines = ["No\t업무가이드 내용 (Action Item)\t조치기한"];
+    selected.forEach(function (it, idx) {
+      var content = it.content.replace(/\t/g, " ").replace(/\r?\n/g, " ");
+      lines.push((idx + 1) + "\t" + content + "\t" + resolveDueDate(it.days));
+    });
+    return lines.join("\n");
+  }
+
+  function setCopyStatus(text, isError) {
+    var el = document.getElementById("copy-status");
+    if (!el) return;
+    el.textContent = text;
+    el.style.display = "block";
+    el.style.color = isError ? "#ffb4a3" : "";
+    clearTimeout(setCopyStatus._timer);
+    setCopyStatus._timer = setTimeout(function () {
+      el.style.display = "none";
+    }, 4000);
+  }
+
+  function fallbackCopyPlainText(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      var copied = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (copied) {
+        setCopyStatus("표 내용이 복사되었습니다 (일반 텍스트). Outlook 등에 붙여넣기(Ctrl+V) 하세요.");
+      } else {
+        setCopyStatus("복사에 실패했습니다.", true);
+      }
+    } catch (e) {
+      console.error(e);
+      setCopyStatus("복사에 실패했습니다.", true);
+    }
+  }
+
+  function copySelectedItemsToClipboard() {
+    try {
+      var selected = getSelectedItemsInOrder();
+      if (selected.length === 0) {
+        alert("선택된 업무가이드 항목이 없습니다.");
+        return;
+      }
+
+      var html = buildSelectedItemsHtmlTable(selected);
+      var text = buildSelectedItemsPlainText(selected);
+
+      if (navigator.clipboard && typeof window.ClipboardItem === "function") {
+        var item = new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" })
+        });
+        navigator.clipboard.write([item]).then(function () {
+          setCopyStatus("표로 복사되었습니다. Outlook 등에 붙여넣기(Ctrl+V) 하세요.");
+        }).catch(function () {
+          fallbackCopyPlainText(text);
+        });
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          setCopyStatus("표 내용이 복사되었습니다 (일반 텍스트). Outlook 등에 붙여넣기(Ctrl+V) 하세요.");
+        }).catch(function () {
+          fallbackCopyPlainText(text);
+        });
+      } else {
+        fallbackCopyPlainText(text);
+      }
+    } catch (e) {
+      console.error(e);
+      setCopyStatus("복사 중 오류가 발생했습니다.", true);
+    }
+  }
+
   // ---------- Event wiring ----------
 
   function bindEvents() {
@@ -1378,6 +1529,7 @@
     document.getElementById("btn-save-new").addEventListener("click", saveNewItem);
 
     document.getElementById("btn-download-excel").addEventListener("click", generateExcel);
+    document.getElementById("btn-copy-table").addEventListener("click", copySelectedItemsToClipboard);
 
     [document.getElementById("modal-select"), document.getElementById("modal-add")].forEach(function (overlay) {
       overlay.addEventListener("click", function (e) {
