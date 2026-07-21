@@ -12,7 +12,9 @@
 //             callers of this URL can't spam the sheet.
 //             - default (no "action"): appends a new row.
 //             - action: "update": overwrites an existing row (by its row
-//               number) with new category/content/days.
+//               number) with new category/content/days/remarks.
+//
+// Sheet columns: A 구분, B 내용, C 표준조치요구일, D 비고.
 //
 // Setup:
 // 1. Paste this file into the bound Apps Script project's Code.gs, save.
@@ -42,7 +44,13 @@ function doGet(e) {
       var content = (row[1] || "").toString().trim();
       if (!category && !content) continue;
 
-      items.push({ row: i + 1, category: category, content: content, days: normalizeDays(row[2]) });
+      items.push({
+        row: i + 1,
+        category: category,
+        content: content,
+        days: normalizeDays(row[2]),
+        remarks: (row[3] || "").toString().trim()
+      });
     }
 
     return jsonOutput({ ok: true, items: items });
@@ -67,6 +75,7 @@ function doPost(e) {
 
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
     var daysValue = data.days === null || data.days === undefined ? "" : data.days;
+    var remarksValue = data.remarks || "";
 
     if (data.action === "update") {
       var rowNum = parseInt(data.row, 10);
@@ -74,11 +83,11 @@ function doPost(e) {
       if (!rowNum || rowNum < 2 || rowNum > lastRow) {
         return jsonOutput({ ok: false, error: "invalid row" });
       }
-      sheet.getRange(rowNum, 1, 1, 3).setValues([[data.category || "", data.content, daysValue]]);
+      sheet.getRange(rowNum, 1, 1, 4).setValues([[data.category || "", data.content, daysValue, remarksValue]]);
       return jsonOutput({ ok: true, row: rowNum });
     }
 
-    sheet.appendRow([data.category || "", data.content, daysValue]);
+    sheet.appendRow([data.category || "", data.content, daysValue, remarksValue]);
     return jsonOutput({ ok: true, row: sheet.getLastRow() });
   } catch (err) {
     return jsonOutput({ ok: false, error: String(err) });

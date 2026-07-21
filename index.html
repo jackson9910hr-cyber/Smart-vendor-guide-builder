@@ -592,12 +592,16 @@
         <label for="new-content">업무가이드 내용</label>
         <textarea id="new-content" rows="4" placeholder="업무가이드 내용을 입력하세요"></textarea>
       </div>
-      <div class="field">
+      <div class="field" style="margin-bottom:14px;">
         <label for="new-days">표준 조치요구일</label>
         <input type="text" id="new-days" placeholder="예: 15  또는  해당공정 착수 20일전">
       </div>
+      <div class="field">
+        <label for="new-remarks">비고</label>
+        <input type="text" id="new-remarks" placeholder="참고 사항을 입력하세요 (선택)">
+      </div>
       <p class="hint-text">숫자만 입력하면 오늘 날짜 + 입력한 일수로 조치기한이 자동 계산됩니다. 숫자가 아닌 문구를 입력하면(예: "해당공정 착수 20일전", "출하 30일전") 입력한 내용이 조치기한에 그대로 표시됩니다. 비워두면 기한 없음(-)으로 표시됩니다.</p>
-      <p class="hint-text">저장한 항목은 이 브라우저에 로컬로 저장되며, 구글시트에는 반영되지 않습니다.</p>
+      <p class="hint-text">저장한 항목은 이 브라우저에 로컬로 저장되며, 구글시트 연동이 설정되어 있으면 시트에도 함께 반영됩니다.</p>
     </div>
     <div class="modal-footer">
       <span></span>
@@ -740,6 +744,7 @@
             category: it.category || "기타",
             content: it.content || "",
             days: parseDaysValue(String(rawDays)),
+            remarks: it.remarks || "",
             source: "master"
           };
         });
@@ -1052,6 +1057,7 @@
     document.getElementById("new-category").value = "일반";
     document.getElementById("new-content").value = "";
     document.getElementById("new-days").value = "";
+    document.getElementById("new-remarks").value = "";
     document.getElementById("modal-add").classList.add("open");
   }
 
@@ -1064,6 +1070,7 @@
     document.getElementById("new-category").value = item.category;
     document.getElementById("new-content").value = item.content;
     document.getElementById("new-days").value = item.days === null ? "" : String(item.days);
+    document.getElementById("new-remarks").value = item.remarks || "";
     document.getElementById("modal-add").classList.add("open");
   }
 
@@ -1075,6 +1082,7 @@
     var category = document.getElementById("new-category").value;
     var content = document.getElementById("new-content").value.trim();
     var daysRaw = document.getElementById("new-days").value;
+    var remarks = document.getElementById("new-remarks").value.trim();
 
     if (!content) {
       alert("업무가이드 내용을 입력해 주세요.");
@@ -1091,14 +1099,16 @@
         existingLocal.category = category;
         existingLocal.content = content;
         existingLocal.days = days;
+        existingLocal.remarks = remarks;
         saveLocalItems();
       } else if (existingMaster) {
-        var candidate = { row: existingMaster.row, category: category, content: content, days: days };
+        var candidate = { row: existingMaster.row, category: category, content: content, days: days, remarks: remarks };
         updateItemInSheet(candidate).then(function (ok) {
           if (ok) {
             existingMaster.category = category;
             existingMaster.content = content;
             existingMaster.days = days;
+            existingMaster.remarks = remarks;
           }
           renderSelectModalList();
           renderSelectedList();
@@ -1110,6 +1120,7 @@
         category: category,
         content: content,
         days: days,
+        remarks: remarks,
         source: "local"
       };
       localItems.push(newItem);
@@ -1158,7 +1169,8 @@
         token: SHEET_WEBAPP_TOKEN,
         category: item.category,
         content: item.content,
-        days: item.days === null ? "" : item.days
+        days: item.days === null ? "" : item.days,
+        remarks: item.remarks || ""
       })
     })
       .then(function (res) {
@@ -1209,7 +1221,8 @@
         row: item.row,
         category: item.category,
         content: item.content,
-        days: item.days === null ? "" : item.days
+        days: item.days === null ? "" : item.days,
+        remarks: item.remarks || ""
       })
     })
       .then(function (res) {
@@ -1252,6 +1265,7 @@
           '<td class="col-no">' + (idx + 1) + '</td>' +
           '<td class="col-content">' + escapeHtml(it.content) + '</td>' +
           '<td class="col-date">' + escapeHtml(due) + '</td>' +
+          '<td class="col-content">' + escapeHtml(it.remarks || "") + '</td>' +
           '<td class="col-del"><button type="button" class="btn btn-danger btn-small" data-remove-id="' + it.id + '" aria-label="선택 항목 삭제">삭제</button></td>' +
         '</tr>'
       );
@@ -1260,7 +1274,7 @@
     wrap.innerHTML =
       '<table class="item-table">' +
         '<thead><tr>' +
-          '<th class="col-no">No</th><th>내용</th><th class="col-date">조치기한</th><th class="col-del">삭제</th>' +
+          '<th class="col-no">No</th><th>내용</th><th class="col-date">조치기한</th><th>비고</th><th class="col-del">삭제</th>' +
         '</tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
       '</table>';
