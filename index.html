@@ -356,6 +356,13 @@
     color: var(--accent);
   }
 
+  .item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
   .select-item-row {
     display: flex;
     align-items: flex-start;
@@ -560,7 +567,7 @@
       <button type="button" class="modal-close" id="modal-select-close" aria-label="팝업 닫기">&times;</button>
     </div>
     <div class="modal-body">
-      <p class="modal-note">수정은 모든 항목에 적용되며(구글시트 항목은 시트에도 반영됩니다), 삭제는 로컬에 추가한 항목에만 적용됩니다. 항목 내용을 클릭하면 선택/해제됩니다.</p>
+      <p class="modal-note">수정/삭제 모두 모든 항목에 적용되며, 구글시트에서 불러온 항목은 시트에도 함께 반영됩니다(삭제는 되돌릴 수 없으니 주의해 주세요). 항목 내용을 클릭하면 선택/해제됩니다.</p>
       <div class="reorder-toggle-row">
         <input type="text" id="category-search" class="category-search-input" placeholder="구분 검색 (예: 일반, PO)" aria-label="구분으로 항목 검색">
         <button type="button" class="btn btn-ghost btn-small" id="btn-select-all" aria-label="전체 항목 선택">전체 선택</button>
@@ -913,15 +920,13 @@
       }
       var isLocal = it.source === "local";
       var editBtn = '<button type="button" class="btn btn-ghost btn-small" data-edit-id="' + it.id + '" aria-label="항목 수정">수정</button>';
-      var deleteBtn = isLocal
-        ? '<button type="button" class="btn btn-danger btn-small" data-delete-id="' + it.id + '" aria-label="항목 삭제">삭제</button>'
-        : "";
+      var deleteBtn = '<button type="button" class="btn btn-danger btn-small" data-delete-id="' + it.id + '" aria-label="항목 삭제">삭제</button>';
       var tagClass = isLocal ? "tag local-tag" : "tag";
       var tagLabel = isLocal ? escapeHtml(it.category) + " · 로컬" : escapeHtml(it.category);
       var handle = reorderMode
         ? '<span class="drag-handle" aria-hidden="true">☰</span>'
         : '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">';
-      var actions = reorderMode ? "" : (editBtn + deleteBtn);
+      var actions = reorderMode ? "" : ('<div class="item-actions">' + editBtn + deleteBtn + '</div>');
 
       return (
         '<div class="select-item-row" data-item-id="' + it.id + '"' + (reorderMode ? ' draggable="true"' : '') + '>' +
@@ -979,14 +984,39 @@
     deleteButtons.forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-delete-id");
-        localItems = localItems.filter(function (x) { return x.id !== id; });
-        saveLocalItems();
-        itemOrder = itemOrder.filter(function (x) { return x !== id; });
-        saveItemOrder();
-        modalSelectedTemp = modalSelectedTemp.filter(function (x) { return x !== id; });
-        selectedIds = selectedIds.filter(function (x) { return x !== id; });
-        renderSelectModalList();
-        renderSelectedList();
+        var localItem = localItems.find(function (x) { return x.id === id; });
+
+        if (localItem) {
+          localItems = localItems.filter(function (x) { return x.id !== id; });
+          saveLocalItems();
+          itemOrder = itemOrder.filter(function (x) { return x !== id; });
+          saveItemOrder();
+          modalSelectedTemp = modalSelectedTemp.filter(function (x) { return x !== id; });
+          selectedIds = selectedIds.filter(function (x) { return x !== id; });
+          renderSelectModalList();
+          renderSelectedList();
+          return;
+        }
+
+        var masterItem = masterItems.find(function (x) { return x.id === id; });
+        if (!masterItem) return;
+        if (!confirm("정말 삭제하시겠습니까? 구글시트에서도 함께 삭제되며 되돌릴 수 없습니다.")) return;
+
+        deleteItemFromSheet(masterItem).then(function (ok) {
+          if (ok) {
+            var deletedRow = masterItem.row;
+            masterItems = masterItems.filter(function (x) { return x.id !== id; });
+            masterItems.forEach(function (x) {
+              if (x.row && deletedRow && x.row > deletedRow) x.row = x.row - 1;
+            });
+            itemOrder = itemOrder.filter(function (x) { return x !== id; });
+            saveItemOrder();
+            modalSelectedTemp = modalSelectedTemp.filter(function (x) { return x !== id; });
+            selectedIds = selectedIds.filter(function (x) { return x !== id; });
+          }
+          renderSelectModalList();
+          renderSelectedList();
+        });
       });
     });
 
@@ -1236,6 +1266,49 @@
         }
         var reason = data && data.error ? data.error : "알 수 없는 오류";
         setSyncStatus("구글시트 반영 실패: " + reason, true);
+        return false;
+      })
+      .catch(function (err) {
+        setSyncStatus("구글시트 연동 실패: " + err.message, true);
+        return false;
+      });
+  }
+
+  // Deletes an existing sheet row for a master-sourced item via Apps
+  // Script. Resolves true/false so callers can decide whether to also
+  // remove it from local state.
+  function deleteItemFromSheet(item) {
+    if (!SHEET_WEBAPP_URL) {
+      setSyncStatus("구글시트 연동이 설정되어 있지 않습니다.", true);
+      return Promise.resolve(false);
+    }
+    if (!item.row) {
+      setSyncStatus("구글시트 삭제 실패: 이 항목에 행 번호 정보가 없습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.", true);
+      return Promise.resolve(false);
+    }
+
+    setSyncStatus("구글시트에서 삭제 중...");
+
+    return fetch(SHEET_WEBAPP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        token: SHEET_WEBAPP_TOKEN,
+        action: "delete",
+        row: item.row
+      })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (data && data.ok) {
+          setSyncStatus("구글시트에서 삭제되었습니다.");
+          return true;
+        }
+        var reason = data && data.error ? data.error : "알 수 없는 오류";
+        setSyncStatus("구글시트 삭제 실패: " + reason, true);
         return false;
       })
       .catch(function (err) {

@@ -5,14 +5,16 @@
 // still serving its checklist rows out to the public web app:
 //
 //   doGet  -> read-only: returns the sheet's rows as JSON, each tagged with
-//             its actual sheet row number so edits can target it precisely.
-//             No auth needed; this is the same data the app's users are
-//             meant to see.
+//             its actual sheet row number so edits/deletes can target it
+//             precisely. No auth needed; this is the same data the app's
+//             users are meant to see.
 //   doPost -> write: gated by a SECRET_TOKEN script property so random
 //             callers of this URL can't spam the sheet.
 //             - default (no "action"): appends a new row.
 //             - action: "update": overwrites an existing row (by its row
 //               number) with new category/content/days/remarks.
+//             - action: "delete": removes an existing row (by its row
+//               number).
 //
 // Sheet columns: A 구분, B 내용, C 표준조치요구일, D 비고.
 //
@@ -69,11 +71,23 @@ function doPost(e) {
     if (!secretToken || data.token !== secretToken) {
       return jsonOutput({ ok: false, error: "unauthorized" });
     }
+
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+
+    if (data.action === "delete") {
+      var delRow = parseInt(data.row, 10);
+      var delLastRow = sheet.getLastRow();
+      if (!delRow || delRow < 2 || delRow > delLastRow) {
+        return jsonOutput({ ok: false, error: "invalid row" });
+      }
+      sheet.deleteRow(delRow);
+      return jsonOutput({ ok: true });
+    }
+
     if (!data.content) {
       return jsonOutput({ ok: false, error: "content required" });
     }
 
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
     var daysValue = data.days === null || data.days === undefined ? "" : data.days;
     var remarksValue = data.remarks || "";
 
