@@ -1372,6 +1372,7 @@
         { width: 12 },
         { width: 54 },
         { width: 24 },
+        { width: 24 },
         { width: 24 }
       ];
 
@@ -1426,12 +1427,13 @@
       // Row 5: blank spacer
       // (row 5 intentionally left empty)
 
-      // Row 6: header (내용 spans B:C, 조치기한 in D)
+      // Row 6: header (내용 spans B:C, 조치기한 in D, 비고 in E)
       sheet.mergeCells("B6:C6");
       var headerRow = sheet.getRow(6);
       headerRow.getCell(1).value = "No";
       headerRow.getCell(2).value = "업무가이드 내용 (Action Item)";
       headerRow.getCell(4).value = "조치기한";
+      headerRow.getCell(5).value = "비고";
       headerRow.eachCell({ includeEmpty: true }, function (cell) {
         cell.fill = greenFill;
         cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -1447,7 +1449,7 @@
       var currentRow = 7;
 
       if (selected.length === 0) {
-        sheet.mergeCells("A" + currentRow + ":D" + currentRow);
+        sheet.mergeCells("A" + currentRow + ":E" + currentRow);
         var emptyCell = sheet.getCell("A" + currentRow);
         emptyCell.value = "선택된 업무가이드 항목이 없습니다";
         emptyCell.alignment = { vertical: "middle", horizontal: "center" };
@@ -1462,10 +1464,12 @@
           row.getCell(1).value = idx + 1;
           row.getCell(2).value = it.content;
           row.getCell(4).value = due;
+          row.getCell(5).value = it.remarks || "";
 
           row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
           row.getCell(2).alignment = { vertical: "top", horizontal: "left", wrapText: true };
           row.getCell(4).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+          row.getCell(5).alignment = { vertical: "top", horizontal: "left", wrapText: true };
 
           row.eachCell({ includeEmpty: true }, function (cell) {
             cell.border = thinBorder;
@@ -1540,21 +1544,25 @@
   }
 
   function buildSelectedItemsHtmlTable(selected) {
+    var headerCellStyle = "border:1px solid #999999;padding:6px 10px;background:#e5e8eb;color:#1a2332;text-align:center;font-weight:bold;";
     var headerHtml =
       '<tr>' +
-        '<th style="border:1px solid #999999;padding:6px 10px;background:#2F6F5E;color:#ffffff;text-align:center;">No</th>' +
-        '<th style="border:1px solid #999999;padding:6px 10px;background:#2F6F5E;color:#ffffff;text-align:center;">업무가이드 내용 (Action Item)</th>' +
-        '<th style="border:1px solid #999999;padding:6px 10px;background:#2F6F5E;color:#ffffff;text-align:center;">조치기한</th>' +
+        '<th style="' + headerCellStyle + '">No</th>' +
+        '<th style="' + headerCellStyle + '">업무가이드 내용 (Action Item)</th>' +
+        '<th style="' + headerCellStyle + '">조치기한</th>' +
+        '<th style="' + headerCellStyle + '">비고</th>' +
       '</tr>';
 
     var rowsHtml = selected.map(function (it, idx) {
       var due = resolveDueDate(it.days);
       var contentHtml = escapeHtml(it.content).replace(/\n/g, "<br>");
+      var remarksHtml = escapeHtml(it.remarks || "").replace(/\n/g, "<br>");
       return (
         '<tr>' +
           '<td style="border:1px solid #999999;padding:6px 10px;text-align:center;">' + (idx + 1) + '</td>' +
           '<td style="border:1px solid #999999;padding:6px 10px;">' + contentHtml + '</td>' +
           '<td style="border:1px solid #999999;padding:6px 10px;text-align:center;">' + escapeHtml(due) + '</td>' +
+          '<td style="border:1px solid #999999;padding:6px 10px;">' + remarksHtml + '</td>' +
         '</tr>'
       );
     }).join("");
@@ -1567,10 +1575,11 @@
   }
 
   function buildSelectedItemsPlainText(selected) {
-    var lines = ["No\t업무가이드 내용 (Action Item)\t조치기한"];
+    var lines = ["No\t업무가이드 내용 (Action Item)\t조치기한\t비고"];
     selected.forEach(function (it, idx) {
       var content = it.content.replace(/\t/g, " ").replace(/\r?\n/g, " ");
-      lines.push((idx + 1) + "\t" + content + "\t" + resolveDueDate(it.days));
+      var remarks = (it.remarks || "").replace(/\t/g, " ").replace(/\r?\n/g, " ");
+      lines.push((idx + 1) + "\t" + content + "\t" + resolveDueDate(it.days) + "\t" + remarks);
     });
     return lines.join("\n");
   }
