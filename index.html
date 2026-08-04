@@ -415,21 +415,21 @@
     .category-search-input { flex: 1 1 100%; order: -1; }
   }
 
-  .drag-handle {
-    cursor: grab;
-    font-size: 16px;
-    color: var(--text-sub);
-    padding: 4px 6px;
+  .move-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     flex-shrink: 0;
-    user-select: none;
   }
 
-  .select-item-row[draggable="true"] {
-    cursor: grab;
+  .move-buttons .btn {
+    padding: 4px 10px;
+    line-height: 1;
   }
 
-  .select-item-row.dragging {
-    opacity: 0.4;
+  .move-buttons .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
 
   .tag {
@@ -573,7 +573,7 @@
         <button type="button" class="btn btn-ghost btn-small" id="btn-select-all" aria-label="전체 항목 선택">전체 선택</button>
         <button type="button" class="btn btn-ghost btn-small" id="btn-toggle-reorder" aria-label="순서 수정 모드 전환">순서 수정</button>
       </div>
-      <p class="hint-text" id="reorder-hint" style="display:none;">항목을 드래그하여 순서를 변경하세요. 완료되면 다시 버튼을 눌러 선택 모드로 돌아갑니다.</p>
+      <p class="hint-text" id="reorder-hint" style="display:none;">▲▼ 버튼으로 순서를 변경하세요. 완료되면 다시 버튼을 눌러 선택 모드로 돌아갑니다.</p>
       <div id="select-item-list"></div>
     </div>
     <div class="modal-footer">
@@ -765,7 +765,7 @@
   // Items not yet in itemOrder (brand new, or whose source hasn't loaded
   // yet) are appended for display only - this function never writes to
   // itemOrder/localStorage itself. Persisting order changes is done
-  // explicitly by reconcileItemOrder() and reorderItem(), so a render that
+  // explicitly by reconcileItemOrder() and moveItem(), so a render that
   // happens to run before master items have finished loading can't
   // mistake "not loaded yet" for "deleted" and wipe out their saved order.
   function combinedItems() {
@@ -810,17 +810,22 @@
     }
   }
 
-  function reorderItem(draggedId, targetId) {
-    if (draggedId === targetId) return;
+  // Swaps an item with its neighbor (delta -1 = up, +1 = down) and
+  // persists immediately. Button clicks are a plain, reliable tap/click
+  // event on every device - unlike HTML5 native drag-and-drop, which iOS
+  // Safari does not support for touch, so a drag-based reorder could look
+  // like it worked (the DOM briefly shifted) without ever actually saving.
+  function moveItem(id, delta) {
     var ids = combinedItems().map(function (it) { return it.id; });
-    var fromIdx = ids.indexOf(draggedId);
-    var toIdx = ids.indexOf(targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    ids.splice(fromIdx, 1);
-    toIdx = ids.indexOf(targetId);
-    ids.splice(toIdx, 0, draggedId);
+    var idx = ids.indexOf(id);
+    var newIdx = idx + delta;
+    if (idx === -1 || newIdx < 0 || newIdx >= ids.length) return;
+    var tmp = ids[idx];
+    ids[idx] = ids[newIdx];
+    ids[newIdx] = tmp;
     itemOrder = ids;
     saveItemOrder();
+    renderSelectModalList();
   }
 
   // ---------- Title preview ----------
@@ -898,7 +903,10 @@
 
   function renderSelectModalList() {
     var wrap = document.getElementById("select-item-list");
-    var items = getVisibleItems();
+    // In reorder mode, ignore any active category filter so moving an
+    // item up/down always operates on (and visibly reflects) the full
+    // list - a filtered view would make neighbor swaps look like no-ops.
+    var items = reorderMode ? combinedItems() : getVisibleItems();
 
     if (items.length === 0) {
       wrap.innerHTML = categorySearchTerm
@@ -908,7 +916,7 @@
       return;
     }
 
-    var html = items.map(function (it) {
+    var html = items.map(function (it, idx) {
       var checked = modalSelectedTemp.indexOf(it.id) !== -1 ? "checked" : "";
       var dueText;
       if (it.days === null) {
@@ -923,13 +931,22 @@
       var deleteBtn = '<button type="button" class="btn btn-danger btn-small" data-delete-id="' + it.id + '" aria-label="항목 삭제">삭제</button>';
       var tagClass = isLocal ? "tag local-tag" : "tag";
       var tagLabel = isLocal ? escapeHtml(it.category) + " · 로컬" : escapeHtml(it.category);
-      var handle = reorderMode
-        ? '<span class="drag-handle" aria-hidden="true">☰</span>'
-        : '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">';
+      var handle;
+      if (reorderMode) {
+        var upDisabled = idx === 0 ? "disabled" : "";
+        var downDisabled = idx === items.length - 1 ? "disabled" : "";
+        handle =
+          '<div class="move-buttons">' +
+            '<button type="button" class="btn btn-ghost btn-small" data-move-up-id="' + it.id + '" ' + upDisabled + ' aria-label="위로 이동">▲</button>' +
+            '<button type="button" class="btn btn-ghost btn-small" data-move-down-id="' + it.id + '" ' + downDisabled + ' aria-label="아래로 이동">▼</button>' +
+          '</div>';
+      } else {
+        handle = '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">';
+      }
       var actions = reorderMode ? "" : ('<div class="item-actions">' + editBtn + deleteBtn + '</div>');
 
       return (
-        '<div class="select-item-row" data-item-id="' + it.id + '"' + (reorderMode ? ' draggable="true"' : '') + '>' +
+        '<div class="select-item-row" data-item-id="' + it.id + '">' +
           handle +
           '<div class="select-item-content" data-content-id="' + it.id + '">' +
             '<span class="' + tagClass + '">' + tagLabel + '</span>' +
@@ -944,7 +961,16 @@
     wrap.innerHTML = html;
 
     if (reorderMode) {
-      bindReorderDragEvents(wrap);
+      wrap.querySelectorAll("[data-move-up-id]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          moveItem(btn.getAttribute("data-move-up-id"), -1);
+        });
+      });
+      wrap.querySelectorAll("[data-move-down-id]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          moveItem(btn.getAttribute("data-move-down-id"), 1);
+        });
+      });
       updateSelectedCounter();
       return;
     }
@@ -1021,31 +1047,6 @@
     });
 
     updateSelectedCounter();
-  }
-
-  function bindReorderDragEvents(wrap) {
-    var rows = wrap.querySelectorAll(".select-item-row");
-    rows.forEach(function (row) {
-      row.addEventListener("dragstart", function (e) {
-        e.dataTransfer.setData("text/plain", row.getAttribute("data-item-id"));
-        e.dataTransfer.effectAllowed = "move";
-        row.classList.add("dragging");
-      });
-      row.addEventListener("dragend", function () {
-        row.classList.remove("dragging");
-      });
-      row.addEventListener("dragover", function (e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-      });
-      row.addEventListener("drop", function (e) {
-        e.preventDefault();
-        var draggedId = e.dataTransfer.getData("text/plain");
-        var targetId = row.getAttribute("data-item-id");
-        reorderItem(draggedId, targetId);
-        renderSelectModalList();
-      });
-    });
   }
 
   function updateSelectedCounter() {
@@ -1637,6 +1638,42 @@
     ].join("\n");
   }
 
+  // Email-ready greeting prepended to the copied content, matching the
+  // fixed wording used when sending the guide out. 수신 is left blank
+  // intentionally - the sender fills that in after pasting.
+  function buildEmailHeaderPlainText() {
+    var project = document.getElementById("f-project").value.trim();
+    var item = document.getElementById("f-item").value.trim();
+
+    return [
+      "수신 : ",
+      "발신 : 이도길 수석 / 두산에너빌리티 ",
+      "",
+      "귀사로 발주된 " + project + " PJT " + item + " 업무가이드 송부 드립니다.",
+      "Action Items 에 대하여 항목별 조치기한 준수하여 회신 부탁 드리며, 조치기한 연장이 필요할 경우 알려주시기 바랍니다.",
+      "",
+      "———————————————————————",
+      ""
+    ].join("\n");
+  }
+
+  function buildEmailHeaderHtml() {
+    var project = document.getElementById("f-project").value.trim();
+    var item = document.getElementById("f-item").value.trim();
+
+    return (
+      '<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.6;">' +
+        '수신 : <br>' +
+        '발신 : 이도길 수석 / 두산에너빌리티 <br>' +
+        '<br>' +
+        '귀사로 발주된 ' + escapeHtml(project) + ' PJT ' + escapeHtml(item) + ' 업무가이드 송부 드립니다.<br>' +
+        'Action Items 에 대하여 항목별 조치기한 준수하여 회신 부탁 드리며, 조치기한 연장이 필요할 경우 알려주시기 바랍니다.<br>' +
+        '<br>' +
+        '———————————————————————' +
+      '</div>'
+    );
+  }
+
   function setCopyStatus(text, isError) {
     var el = document.getElementById("copy-status");
     if (!el) return;
@@ -1680,8 +1717,8 @@
       }
 
       var spacerHtml = '<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.8;">&nbsp;</div>';
-      var html = buildOrderInfoHtmlTable() + spacerHtml + buildSelectedItemsHtmlTable(selected);
-      var text = buildOrderInfoPlainText() + "\n" + buildSelectedItemsPlainText(selected);
+      var html = buildEmailHeaderHtml() + spacerHtml + buildOrderInfoHtmlTable() + spacerHtml + buildSelectedItemsHtmlTable(selected);
+      var text = buildEmailHeaderPlainText() + "\n" + buildOrderInfoPlainText() + "\n" + buildSelectedItemsPlainText(selected);
 
       if (navigator.clipboard && typeof window.ClipboardItem === "function") {
         var item = new ClipboardItem({
