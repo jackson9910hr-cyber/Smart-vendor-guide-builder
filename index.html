@@ -415,21 +415,19 @@
     .category-search-input { flex: 1 1 100%; order: -1; }
   }
 
-  .move-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+  .drag-handle {
+    cursor: grab;
+    font-size: 18px;
+    color: var(--text-sub);
+    padding: 4px 8px;
     flex-shrink: 0;
+    user-select: none;
+    touch-action: none;
   }
 
-  .move-buttons .btn {
-    padding: 4px 10px;
-    line-height: 1;
-  }
-
-  .move-buttons .btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
+  .select-item-row.dragging {
+    opacity: 0.5;
+    background: var(--accent-bg);
   }
 
   .tag {
@@ -573,7 +571,7 @@
         <button type="button" class="btn btn-ghost btn-small" id="btn-select-all" aria-label="전체 항목 선택">전체 선택</button>
         <button type="button" class="btn btn-ghost btn-small" id="btn-toggle-reorder" aria-label="순서 수정 모드 전환">순서 수정</button>
       </div>
-      <p class="hint-text" id="reorder-hint" style="display:none;">▲▼ 버튼으로 순서를 변경하세요. 완료되면 다시 버튼을 눌러 선택 모드로 돌아갑니다.</p>
+      <p class="hint-text" id="reorder-hint" style="display:none;">☰ 손잡이를 눌러 위/아래로 드래그하면 순서가 바로 저장됩니다. 완료되면 다시 버튼을 눌러 선택 모드로 돌아갑니다.</p>
       <div id="select-item-list"></div>
     </div>
     <div class="modal-footer">
@@ -810,22 +808,101 @@
     }
   }
 
-  // Swaps an item with its neighbor (delta -1 = up, +1 = down) and
-  // persists immediately. Button clicks are a plain, reliable tap/click
-  // event on every device - unlike HTML5 native drag-and-drop, which iOS
-  // Safari does not support for touch, so a drag-based reorder could look
-  // like it worked (the DOM briefly shifted) without ever actually saving.
-  function moveItem(id, delta) {
+  // Moves draggedId to sit right before targetId and persists immediately
+  // (called on every row crossed while dragging, not just at drop, so a
+  // missed pointerup/pointercancel can never lose the change).
+  function moveItemToPosition(draggedId, targetId) {
+    if (draggedId === targetId) return;
     var ids = combinedItems().map(function (it) { return it.id; });
-    var idx = ids.indexOf(id);
-    var newIdx = idx + delta;
-    if (idx === -1 || newIdx < 0 || newIdx >= ids.length) return;
-    var tmp = ids[idx];
-    ids[idx] = ids[newIdx];
-    ids[newIdx] = tmp;
+    var fromIdx = ids.indexOf(draggedId);
+    var toIdx = ids.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    var movingDown = fromIdx < toIdx;
+    ids.splice(fromIdx, 1);
+    var newTargetIdx = ids.indexOf(targetId);
+    // Moving down: land right after the target (dropping "onto" the next
+    // item should visibly pass it). Moving up: land right before it.
+    // Always inserting "before" regardless of direction left downward
+    // drags stuck in place whenever the pointer was over the item
+    // immediately following the dragged one - removing+reinserting before
+    // it put it right back where it started.
+    var insertIdx = movingDown ? newTargetIdx + 1 : newTargetIdx;
+    ids.splice(insertIdx, 0, draggedId);
+
     itemOrder = ids;
     saveItemOrder();
     renderSelectModalList();
+  }
+
+  // Custom drag-to-reorder built on the Pointer Events API (unifies
+  // mouse/touch/pen, unlike HTML5 native drag-and-drop which iOS Safari
+  // does not support for touch input). Bound once on #select-item-list
+  // itself - a stable element that survives renderSelectModalList()
+  // rebuilding its children - so pointer capture keeps working even
+  // though the row currently being dragged gets re-created on every
+  // crossing (moveItemToPosition re-renders the list live).
+  var reorderDragState = null;
+
+  // Finds the row whose vertical center is closest to clientY. Used instead
+  // of document.elementFromPoint() during drag: the list scrolls inside the
+  // modal body, and near its top/bottom edge elementFromPoint can return a
+  // sibling like modal-footer instead of the row actually under the
+  // pointer, silently breaking the drag in whichever direction happens to
+  // approach that edge. Comparing against each row's own geometry has no
+  // such blind spot.
+  function findRowNearestY(wrap, clientY) {
+    var rows = wrap.querySelectorAll(".select-item-row");
+    var closest = null;
+    var closestDist = Infinity;
+    for (var i = 0; i < rows.length; i++) {
+      var rect = rows[i].getBoundingClientRect();
+      var mid = rect.top + rect.height / 2;
+      var dist = Math.abs(clientY - mid);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = rows[i];
+      }
+    }
+    return closest;
+  }
+
+  function setupReorderDrag() {
+    var wrap = document.getElementById("select-item-list");
+
+    wrap.addEventListener("pointerdown", function (e) {
+      if (!reorderMode) return;
+      var handle = e.target.closest(".drag-handle");
+      if (!handle) return;
+      var row = handle.closest(".select-item-row");
+      if (!row) return;
+      e.preventDefault();
+      reorderDragState = { id: row.getAttribute("data-item-id"), pointerId: e.pointerId, lastTargetId: null };
+      try { wrap.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      row.classList.add("dragging");
+    });
+
+    wrap.addEventListener("pointermove", function (e) {
+      if (!reorderDragState || reorderDragState.pointerId !== e.pointerId) return;
+      var targetRow = findRowNearestY(wrap, e.clientY);
+      if (!targetRow) return;
+      var targetId = targetRow.getAttribute("data-item-id");
+      if (targetId === reorderDragState.id || targetId === reorderDragState.lastTargetId) return;
+      reorderDragState.lastTargetId = targetId;
+      moveItemToPosition(reorderDragState.id, targetId);
+      var refreshedRow = wrap.querySelector('.select-item-row[data-item-id="' + reorderDragState.id + '"]');
+      if (refreshedRow) refreshedRow.classList.add("dragging");
+    });
+
+    function endReorderDrag(e) {
+      if (!reorderDragState || reorderDragState.pointerId !== e.pointerId) return;
+      try { wrap.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      reorderDragState = null;
+      renderSelectModalList();
+    }
+
+    wrap.addEventListener("pointerup", endReorderDrag);
+    wrap.addEventListener("pointercancel", endReorderDrag);
   }
 
   // ---------- Title preview ----------
@@ -916,7 +993,7 @@
       return;
     }
 
-    var html = items.map(function (it, idx) {
+    var html = items.map(function (it) {
       var checked = modalSelectedTemp.indexOf(it.id) !== -1 ? "checked" : "";
       var dueText;
       if (it.days === null) {
@@ -931,18 +1008,9 @@
       var deleteBtn = '<button type="button" class="btn btn-danger btn-small" data-delete-id="' + it.id + '" aria-label="항목 삭제">삭제</button>';
       var tagClass = isLocal ? "tag local-tag" : "tag";
       var tagLabel = isLocal ? escapeHtml(it.category) + " · 로컬" : escapeHtml(it.category);
-      var handle;
-      if (reorderMode) {
-        var upDisabled = idx === 0 ? "disabled" : "";
-        var downDisabled = idx === items.length - 1 ? "disabled" : "";
-        handle =
-          '<div class="move-buttons">' +
-            '<button type="button" class="btn btn-ghost btn-small" data-move-up-id="' + it.id + '" ' + upDisabled + ' aria-label="위로 이동">▲</button>' +
-            '<button type="button" class="btn btn-ghost btn-small" data-move-down-id="' + it.id + '" ' + downDisabled + ' aria-label="아래로 이동">▼</button>' +
-          '</div>';
-      } else {
-        handle = '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">';
-      }
+      var handle = reorderMode
+        ? '<span class="drag-handle" aria-hidden="true">☰</span>'
+        : '<input type="checkbox" data-item-id="' + it.id + '" ' + checked + ' aria-label="항목 선택">';
       var actions = reorderMode ? "" : ('<div class="item-actions">' + editBtn + deleteBtn + '</div>');
 
       return (
@@ -961,16 +1029,9 @@
     wrap.innerHTML = html;
 
     if (reorderMode) {
-      wrap.querySelectorAll("[data-move-up-id]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          moveItem(btn.getAttribute("data-move-up-id"), -1);
-        });
-      });
-      wrap.querySelectorAll("[data-move-down-id]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          moveItem(btn.getAttribute("data-move-down-id"), 1);
-        });
-      });
+      // Drag handling is bound once on the stable #select-item-list
+      // container itself (see setupReorderDrag) so pointer capture
+      // survives re-renders here; nothing per-row to wire up.
       updateSelectedCounter();
       return;
     }
@@ -1758,6 +1819,7 @@
     document.getElementById("btn-toggle-reorder").addEventListener("click", toggleReorderMode);
     document.getElementById("btn-select-all").addEventListener("click", selectAllItems);
     document.getElementById("category-search").addEventListener("input", handleCategorySearchInput);
+    setupReorderDrag();
 
     document.getElementById("btn-open-add").addEventListener("click", openAddModal);
     document.getElementById("modal-add-close").addEventListener("click", closeAddModal);
