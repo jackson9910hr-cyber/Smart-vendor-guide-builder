@@ -743,6 +743,7 @@
         }
         masterItems = data.items.map(function (it, idx) {
           var rawDays = it.days === null || it.days === undefined ? "" : it.days;
+          var rawOrder = it.order;
           return {
             id: "m-" + (it.row || idx),
             row: it.row || null,
@@ -750,6 +751,7 @@
             content: it.content || "",
             days: parseDaysValue(String(rawDays)),
             remarks: it.remarks || "",
+            order: (typeof rawOrder === "number" && !isNaN(rawOrder)) ? rawOrder : null,
             source: "master"
           };
         });
@@ -788,16 +790,58 @@
     return ordered;
   }
 
+  // Master items in the order the sheet itself says they should be in (its
+  // "순서" column E), falling back to the sheet's row order for items that
+  // have never been explicitly reordered. This - not localStorage - is the
+  // cross-device source of truth for master item order.
+  function sortedMasterIds() {
+    var arr = masterItems.slice();
+    arr.sort(function (a, b) {
+      var ao = (a.order === null || a.order === undefined) ? Infinity : a.order;
+      var bo = (b.order === null || b.order === undefined) ? Infinity : b.order;
+      if (ao !== bo) return ao - bo;
+      return (a.row || 0) - (b.row || 0);
+    });
+    return arr.map(function (it) { return it.id; });
+  }
+
   // Persists itemOrder so it includes every currently-known item id -
   // pruning ids that no longer exist anywhere and appending new ones.
   // Only call this once all relevant sources (master fetch + local items)
   // have actually finished loading, or after a genuine deletion.
+  //
+  // Master-to-master relative order always gets re-threaded from the
+  // sheet's own order column (sortedMasterIds), never from this device's
+  // old itemOrder - otherwise each device/browser would keep drifting back
+  // to whatever it last happened to have locally. Local items (which only
+  // ever exist on this one device/browser anyway) keep the position they
+  // had relative to their previous neighbor.
   function reconcileItemOrder() {
     var raw = masterItems.concat(localItems);
-    var knownIds = {};
-    raw.forEach(function (it) { knownIds[it.id] = true; });
+    var byId = {};
+    raw.forEach(function (it) { byId[it.id] = it; });
 
-    var newOrder = itemOrder.filter(function (id) { return knownIds[id]; });
+    var localSeq = itemOrder.filter(function (id) {
+      return byId[id] && byId[id].source === "local";
+    });
+    var precedingOf = {};
+    for (var i = 0; i < itemOrder.length; i++) {
+      if (localSeq.indexOf(itemOrder[i]) !== -1) {
+        precedingOf[itemOrder[i]] = i > 0 ? itemOrder[i - 1] : null;
+      }
+    }
+
+    var newOrder = sortedMasterIds();
+    localSeq.forEach(function (id) {
+      var anchor = precedingOf[id];
+      var insertAt = 0;
+      if (anchor) {
+        var anchorIdx = newOrder.indexOf(anchor);
+        insertAt = anchorIdx === -1 ? newOrder.length : anchorIdx + 1;
+      }
+      newOrder.splice(insertAt, 0, id);
+    });
+
     raw.forEach(function (it) {
       if (newOrder.indexOf(it.id) === -1) newOrder.push(it.id);
     });
@@ -832,6 +876,7 @@
 
     itemOrder = ids;
     saveItemOrder();
+    reorderDirty = true;
     renderSelectModalList();
   }
 
@@ -843,6 +888,9 @@
   // though the row currently being dragged gets re-created on every
   // crossing (moveItemToPosition re-renders the list live).
   var reorderDragState = null;
+  // Set whenever a drag actually changes itemOrder; consumed on drop to
+  // decide whether master item order needs to be pushed to the sheet.
+  var reorderDirty = false;
 
   // Finds the row whose vertical center is closest to clientY. Used instead
   // of document.elementFromPoint() during drag: the list scrolls inside the
@@ -899,6 +947,10 @@
       try { wrap.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       reorderDragState = null;
       renderSelectModalList();
+      if (reorderDirty) {
+        reorderDirty = false;
+        syncOrderToSheet();
+      }
     }
 
     wrap.addEventListener("pointerup", endReorderDrag);
@@ -1376,6 +1428,58 @@
       .catch(function (err) {
         setSyncStatus("구글시트 연동 실패: " + err.message, true);
         return false;
+      });
+  }
+
+  // Pushes the current drag-and-drop order for every master-sourced item
+  // to the sheet's "순서" column, so the order survives a reload and shows
+  // the same way on any other device (unlike itemOrder/localStorage, which
+  // is only ever known to this one browser). Fires once per drag gesture
+  // (on drop), not on every row crossed while dragging. Local-only items
+  // have no sheet row to write to and are skipped - they already can't be
+  // seen from another device anyway.
+  function syncOrderToSheet() {
+    if (!SHEET_WEBAPP_URL) return;
+
+    var byId = {};
+    masterItems.forEach(function (it) { byId[it.id] = it; });
+
+    var updates = [];
+    var seq = 10;
+    itemOrder.forEach(function (id) {
+      var it = byId[id];
+      if (!it || !it.row) return;
+      updates.push({ row: it.row, order: seq });
+      it.order = seq;
+      seq += 10;
+    });
+    if (updates.length === 0) return;
+
+    setSyncStatus("순서를 구글시트에 반영 중...");
+
+    fetch(SHEET_WEBAPP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        token: SHEET_WEBAPP_TOKEN,
+        action: "reorder",
+        order: updates
+      })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (data && data.ok) {
+          setSyncStatus("순서가 구글시트에 반영되었습니다.");
+        } else {
+          var reason = data && data.error ? data.error : "알 수 없는 오류";
+          setSyncStatus("순서 반영 실패: " + reason + " (이 기기에만 저장됨)", true);
+        }
+      })
+      .catch(function (err) {
+        setSyncStatus("순서 반영 실패: " + err.message + " (이 기기에만 저장됨)", true);
       });
   }
 

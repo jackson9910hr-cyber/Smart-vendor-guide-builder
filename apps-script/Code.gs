@@ -15,8 +15,13 @@
 //               number) with new category/content/days/remarks.
 //             - action: "delete": removes an existing row (by its row
 //               number).
+//             - action: "reorder": overwrites the 순서 column for a batch
+//               of existing rows (by row number) - this is how drag-to-
+//               reorder in the web app survives a reload and shows the
+//               same way on every device, instead of just being remembered
+//               by one browser's localStorage.
 //
-// Sheet columns: A 구분, B 내용, C 표준조치요구일, D 비고.
+// Sheet columns: A 구분, B 내용, C 표준조치요구일, D 비고, E 순서.
 //
 // Setup:
 // 1. Paste this file into the bound Apps Script project's Code.gs, save.
@@ -51,7 +56,8 @@ function doGet(e) {
         category: category,
         content: content,
         days: normalizeDays(row[2]),
-        remarks: (row[3] || "").toString().trim()
+        remarks: (row[3] || "").toString().trim(),
+        order: normalizeOrder(row[4])
       });
     }
 
@@ -81,6 +87,21 @@ function doPost(e) {
         return jsonOutput({ ok: false, error: "invalid row" });
       }
       sheet.deleteRow(delRow);
+      return jsonOutput({ ok: true });
+    }
+
+    if (data.action === "reorder") {
+      var updates = data.order;
+      if (!Array.isArray(updates)) {
+        return jsonOutput({ ok: false, error: "invalid order payload" });
+      }
+      var reorderLastRow = sheet.getLastRow();
+      for (var j = 0; j < updates.length; j++) {
+        var rowNum2 = parseInt(updates[j].row, 10);
+        var orderVal = Number(updates[j].order);
+        if (!rowNum2 || rowNum2 < 2 || rowNum2 > reorderLastRow || isNaN(orderVal)) continue;
+        sheet.getRange(rowNum2, 5).setValue(orderVal);
+      }
       return jsonOutput({ ok: true });
     }
 
@@ -114,6 +135,12 @@ function normalizeDays(rawDays) {
   if (rawDays === "" || rawDays === null || rawDays === undefined) return "";
   if (typeof rawDays === "number") return rawDays;
   return String(rawDays).trim();
+}
+
+function normalizeOrder(rawOrder) {
+  if (rawOrder === "" || rawOrder === null || rawOrder === undefined) return null;
+  var n = Number(rawOrder);
+  return isNaN(n) ? null : n;
 }
 
 function jsonOutput(obj) {
